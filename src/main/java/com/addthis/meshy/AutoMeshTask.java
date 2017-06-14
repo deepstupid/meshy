@@ -13,33 +13,23 @@
  */
 package com.addthis.meshy;
 
+import com.addthis.basis.util.LessBytes;
+import com.addthis.basis.util.Parameter;
+import com.addthis.meshy.service.peer.PeerService;
+import com.google.common.collect.Lists;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.SocketException;
-import java.net.SocketTimeoutException;
-
+import java.net.*;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.zip.CRC32;
 
-import com.addthis.basis.util.LessBytes;
-import com.addthis.basis.util.Parameter;
-
-import com.addthis.meshy.service.peer.PeerService;
-
-import com.google.common.collect.Lists;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 class AutoMeshTask implements Runnable {
-    protected static final Logger log = LoggerFactory.getLogger(AutoMeshTask.class);
+    private static final Logger log = LoggerFactory.getLogger(AutoMeshTask.class);
 
     private static final String secret = Parameter.value("meshy.secret");
 
@@ -59,7 +49,8 @@ class AutoMeshTask implements Runnable {
         return new DatagramSocket(port);
     }
 
-    @Override public void run() {
+    @Override
+    public void run() {
         try (final DatagramSocket server = newSocket()) {
             server.setBroadcast(true);
             server.setSoTimeout(timeout);
@@ -79,11 +70,11 @@ class AutoMeshTask implements Runnable {
                     DatagramPacket packet = new DatagramPacket(new byte[4096], 4096);
                     server.receive(packet);
                     log.debug("{} AutoMesh.recv from: {} size={}",
-                              meshyServer, packet.getAddress(), packet.getLength());
+                            meshyServer, packet.getAddress(), packet.getLength());
                     if (packet.getLength() > 0) {
                         for (NodeInfo info : decode(packet)) {
                             log.debug("{} AutoMesh.recv: {} : {} from {}",
-                                      meshyServer, info.uuid, info.address, info.address);
+                                    meshyServer, info.uuid, info.address, info.address);
                             meshyServer.connectToPeer(info.uuid, info.address);
                         }
                     }
@@ -121,7 +112,7 @@ class AutoMeshTask implements Runnable {
         return p;
     }
 
-    private Iterable<NodeInfo> decode(DatagramPacket packet) throws IOException {
+    private static Iterable<NodeInfo> decode(DatagramPacket packet) throws IOException {
         InetAddress remote = packet.getAddress();
         byte[] packed = packet.getData();
         ByteArrayInputStream in = new ByteArrayInputStream(packed);

@@ -13,15 +13,12 @@
  */
 package com.addthis.meshy.service.file;
 
+import com.addthis.basis.util.LessBytes;
+import com.google.common.base.Objects;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-
-import com.addthis.basis.util.LessBytes;
-
-import com.addthis.meshy.VirtualFileReference;
-
-import com.google.common.base.Objects;
 
 public class FileReference {
 
@@ -49,16 +46,16 @@ public class FileReference {
         hostUUID = LessBytes.readString(in);
     }
 
+    public String getHostUUID() {
+        return hostUUID;
+    }
+
     /**
      * should only be used by the test harness
      */
     protected FileReference setHostUUID(final String uuid) {
         this.hostUUID = uuid;
         return this;
-    }
-
-    public String getHostUUID() {
-        return hostUUID;
     }
 
     byte[] encode(String uuid) {
@@ -95,13 +92,7 @@ public class FileReference {
         if (lastModified != otherReference.lastModified) {
             return false;
         }
-        if (size != otherReference.size) {
-            return false;
-        }
-        if (!Objects.equal(hostUUID, otherReference.hostUUID)) {
-            return false;
-        }
-        return true;
+        return size == otherReference.size && Objects.equal(hostUUID, otherReference.hostUUID);
     }
 
     @Override

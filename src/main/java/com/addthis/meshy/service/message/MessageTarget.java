@@ -13,21 +13,18 @@
  */
 package com.addthis.meshy.service.message;
 
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-
-import java.util.HashMap;
-
 import com.addthis.basis.util.LessBytes;
-
 import com.addthis.meshy.Meshy;
 import com.addthis.meshy.TargetHandler;
-
+import io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.buffer.ByteBuf;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * MessageService allows transient client connections to offer services and extensions
@@ -38,10 +35,10 @@ public class MessageTarget extends TargetHandler implements OutputSender, TopicS
 
     private static final Logger log = LoggerFactory.getLogger(MessageTarget.class);
 
-    private static final HashMap<String, TargetListener> targetListeners = new HashMap<>();
+    private static final Map<String, TargetListener> targetListeners = new ConcurrentHashMap();
 
     public static void registerListener(String topic, TargetListener listener) {
-        synchronized (targetListeners) {
+         {
             if (targetListeners.put(topic, listener) != null) {
                 log.warn("WARNING: override listener for {}", topic);
             }
@@ -54,7 +51,7 @@ public class MessageTarget extends TargetHandler implements OutputSender, TopicS
     }
 
     public static void deregisterListener(String topic) {
-        synchronized (targetListeners) {
+         {
             targetListeners.remove(topic);
         }
     }
@@ -69,7 +66,7 @@ public class MessageTarget extends TargetHandler implements OutputSender, TopicS
     public void receive(int length, ByteBuf buffer) throws Exception {
         InputStream in = Meshy.getInput(length, buffer);
         String topic = LessBytes.readString(in);
-        synchronized (targetListeners) {
+         {
             TargetListener listener = targetListeners.get(topic);
             if (listener != null) {
                 listener.receiveMessage(this, topic, in);
@@ -79,7 +76,7 @@ public class MessageTarget extends TargetHandler implements OutputSender, TopicS
 
     @Override
     public void receiveComplete() throws Exception {
-        synchronized (targetListeners) {
+         {
             for (TargetListener listener : targetListeners.values()) {
                 listener.linkDown(this);
             }

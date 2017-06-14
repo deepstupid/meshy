@@ -13,29 +13,27 @@
  */
 package com.addthis.meshy;
 
+import com.addthis.basis.util.LessStrings;
+import com.addthis.basis.util.Parameter;
+import com.addthis.meshy.service.file.VirtualFileInput;
+import com.addthis.meshy.service.file.VirtualFileReference;
+import com.addthis.meshy.service.file.VirtualFileSystem;
+import com.google.common.collect.Iterators;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-
 import java.io.File;
 import java.io.FileInputStream;
-
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.PathMatcher;
-
-import com.addthis.basis.util.Parameter;
-import com.addthis.basis.util.LessStrings;
-
-import com.google.common.collect.Iterators;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 public class LocalFileSystem implements VirtualFileSystem {
@@ -47,6 +45,12 @@ public class LocalFileSystem implements VirtualFileSystem {
         reloadHandlers();
     }
 
+    private FileReference rootDir;
+
+    public LocalFileSystem(File rootDir) {
+        this.rootDir = new FileReference(rootDir);
+    }
+
     public static void reloadHandlers() {
         LinkedList<LocalFileHandler> list = new LinkedList<>();
         if (LocalFileHandlerMux.muxEnabled) {
@@ -55,18 +59,12 @@ public class LocalFileSystem implements VirtualFileSystem {
         String[] handlerClasses = LessStrings.splitArray(Parameter.value("mesh.local.handlers", ""), ",");
         for (String handler : handlerClasses) {
             try {
-                list.add((LocalFileHandler) (Class.forName(handler).newInstance()));
+                list.add((LocalFileHandler) (Class.forName(handler).getConstructor().newInstance()));
             } catch (Exception ex) {
                 log.warn("unable to load file handler: ", ex);
             }
         }
         handlers = list.toArray(new LocalFileHandler[list.size()]);
-    }
-
-    private FileReference rootDir;
-
-    public LocalFileSystem(File rootDir) {
-        this.rootDir = new FileReference(rootDir);
     }
 
     @Override
@@ -119,7 +117,8 @@ public class LocalFileSystem implements VirtualFileSystem {
             return ptr.length();
         }
 
-        @Nullable @Override
+        @Nullable
+        @Override
         public Iterator<VirtualFileReference> listFiles(@Nonnull final PathMatcher filter) {
             try {
                 return listFilesHelper(filter);
@@ -129,7 +128,8 @@ public class LocalFileSystem implements VirtualFileSystem {
             }
         }
 
-        @Nullable @Override
+        @Nullable
+        @Override
         public VirtualFileReference getFile(String name) {
             for (LocalFileHandler handler : handlers) {
                 if (handler.canHandleDirectory(ptr)) {
@@ -155,12 +155,13 @@ public class LocalFileSystem implements VirtualFileSystem {
             }
             try (Stream<Path> files = Files.list(ptr.toPath()).filter(file -> filter.matches(file.getFileName()))) {
                 return files.map(FileReference::new)
-                            .collect(Collectors.<VirtualFileReference>toList())
-                            .iterator();
+                        .collect(Collectors.<VirtualFileReference>toList())
+                        .iterator();
             }
         }
 
-        @Nullable @Override
+        @Nullable
+        @Override
         public VirtualFileInput getInput(final Map<String, String> options) {
             try {
                 if (ptr.isFile() && ptr.canRead()) {

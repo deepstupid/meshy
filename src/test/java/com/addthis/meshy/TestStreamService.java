@@ -46,7 +46,7 @@ public class TestStreamService extends TestMesh {
 
     @Test
     public void testReadPressure() throws Exception {
-        final int serverCount = 20;
+        final int serverCount = 10;
         List<MeshyServer> servers = new LinkedList<>();
         for (int i = 0; i < serverCount; i++) {
             servers.add(getServer("src/test/files"));
@@ -136,10 +136,11 @@ public class TestStreamService extends TestMesh {
                 byte[] raw;
                 if (async) {
                     SourceInputStream sourceInputStream = stream.getInputStream();
+
                     ByteArrayOutputStream bos = new ByteArrayOutputStream();
                     boolean done = false;
                     while (!done) {
-                        byte[] data = sourceInputStream.poll(100, TimeUnit.MILLISECONDS);
+                        byte[] data = sourceInputStream.poll(10, TimeUnit.MILLISECONDS);
                         if (data != null) {
                             if (data.length == 0) {
                                 done = true;

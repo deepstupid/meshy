@@ -17,5 +17,5 @@ import java.io.OutputStream;
 
 public interface TopicSender {
 
-    public OutputStream sendMessage(String topic);
+    OutputStream sendMessage(String topic);
 }

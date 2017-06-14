@@ -13,17 +13,19 @@
  */
 package com.addthis.meshy.service.file;
 
-import java.util.HashSet;
+import com.google.common.collect.Sets;
+
+import java.util.Set;
 
 /**
  * first-response duplicates filter
  */
 public class DupFilter implements FileReferenceFilter {
 
-    private final HashSet<String> keys = new HashSet<>();
+    private final Set<String> keys = Sets.newConcurrentHashSet();
 
     @Override
-    public synchronized boolean accept(FileReference ref) {
+    public boolean accept(FileReference ref) {
         return keys.add(ref.name + '#' + ref.getHostUUID());
     }
 }

@@ -16,5 +16,5 @@ package com.addthis.meshy;
 
 public interface SendWatcher {
 
-    public void sendFinished(int bytes);
+    void sendFinished(int bytes);
 }

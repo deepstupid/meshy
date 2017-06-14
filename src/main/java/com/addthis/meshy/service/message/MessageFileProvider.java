@@ -13,18 +13,15 @@
  */
 package com.addthis.meshy.service.message;
 
+import com.addthis.basis.util.LessBytes;
+import com.addthis.meshy.MeshyClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-
 import java.util.HashMap;
-
-import com.addthis.basis.util.LessBytes;
-
-import com.addthis.meshy.MeshyClient;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 public class MessageFileProvider implements TopicListener, AutoCloseable {
@@ -55,7 +52,7 @@ public class MessageFileProvider implements TopicListener, AutoCloseable {
         }
     }
 
-    public void deleteListener(String fileName) {
+    private void deleteListener(String fileName) {
         synchronized (listeners) {
             OutputStream out = source.sendMessage(MessageFileSystem.MFS_DEL);
             try {
@@ -97,7 +94,8 @@ public class MessageFileProvider implements TopicListener, AutoCloseable {
         log.info("link down source={} listeners={}", source, listeners);
     }
 
-    @Override public void close() throws Exception {
+    @Override
+    public void close() throws Exception {
         source.sendComplete();
         source.waitComplete();
     }

@@ -13,18 +13,18 @@
  */
 package com.addthis.meshy;
 
+import com.addthis.meshy.service.file.VirtualFileReference;
+
 import java.io.File;
-
-import java.util.Iterator;
-
 import java.nio.file.PathMatcher;
+import java.util.Iterator;
 
 
 public interface LocalFileHandler {
 
-    public boolean canHandleDirectory(File dir);
+    boolean canHandleDirectory(File dir);
 
-    public Iterator<VirtualFileReference> listFiles(File dir, PathMatcher filter);
+    Iterator<VirtualFileReference> listFiles(File dir, PathMatcher filter);
 
-    public VirtualFileReference getFile(File dir, String name);
+    VirtualFileReference getFile(File dir, String name);
 }

@@ -15,5 +15,5 @@ package com.addthis.meshy.service.file;
 
 public interface FileReferenceFilter {
 
-    public boolean accept(FileReference ref);
+    boolean accept(FileReference ref);
 }

@@ -13,38 +13,9 @@
  */
 package com.addthis.meshy.service.file;
 
-import java.io.IOException;
-
-import java.net.InetSocketAddress;
-
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Deque;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-
-import java.nio.file.FileSystems;
-import java.nio.file.PathMatcher;
-
 import com.addthis.basis.util.LessBytes;
 import com.addthis.basis.util.Parameter;
-
-import com.addthis.meshy.ChannelMaster;
-import com.addthis.meshy.ChannelState;
-import com.addthis.meshy.Meshy;
-import com.addthis.meshy.TargetHandler;
-import com.addthis.meshy.VirtualFileReference;
-import com.addthis.meshy.VirtualFileSystem;
-
+import com.addthis.meshy.*;
 import com.google.common.base.CharMatcher;
 import com.google.common.collect.ConcurrentHashMultiset;
 import com.google.common.collect.Iterators;
@@ -52,47 +23,49 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.common.util.concurrent.Uninterruptibles;
-
 import com.yammer.metrics.Metrics;
 import com.yammer.metrics.core.Counter;
 import com.yammer.metrics.core.Gauge;
 import com.yammer.metrics.core.Meter;
 import com.yammer.metrics.core.Timer;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.file.FileSystems;
+import java.nio.file.PathMatcher;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class FileTarget extends TargetHandler implements Runnable {
 
-    private static final Logger log = LoggerFactory.getLogger(FileTarget.class);
-
-    static final int finderWarnTime = Parameter.intValue("meshy.finder.warnTime", 10000);
-    static final int debugCacheLine = Parameter.intValue("meshy.finder.debug.cacheLine", 5000);
-
+    private static final int finderWarnTime = Parameter.intValue("meshy.finder.warnTime", 10000);
+    private static final int debugCacheLine = Parameter.intValue("meshy.finder.debug.cacheLine", 5000);
     //  Metrics version of 'finds' is handled by the localFindTimer's meter
     static final AtomicInteger finds = new AtomicInteger(0);
-    static final Meter fileFindMeter = Metrics.newMeter(FileTarget.class, "allFinds", "found", TimeUnit.SECONDS);
+    private static final Meter fileFindMeter = Metrics.newMeter(FileTarget.class, "allFinds", "found", TimeUnit.SECONDS);
     static final AtomicInteger found = new AtomicInteger(0);
     static final Counter findsRunning = Metrics.newCounter(FileTarget.class, "allFinds", "running");
     static final AtomicLong findTime = new AtomicLong(0);
-    static final Timer localFindTimer = Metrics.newTimer(FileTarget.class, "localFinds", "timer");
+    private static final Timer localFindTimer = Metrics.newTimer(FileTarget.class, "localFinds", "timer");
     static final AtomicLong findTimeLocal = new AtomicLong(0);
-
-    static final int finderThreads = Parameter.intValue("meshy.finder.threads", 2);
-    static final int finderQueueSafetyDrop = Parameter.intValue("meshy.finder.safety.drop", Integer.MAX_VALUE);
+    private static final int finderThreads = Parameter.intValue("meshy.finder.threads", 2);
+    private static final int finderQueueSafetyDrop = Parameter.intValue("meshy.finder.safety.drop", Integer.MAX_VALUE);
+    static final LinkedBlockingQueue<Runnable> finderQueue = new LinkedBlockingQueue<>(finderQueueSafetyDrop);
     static final Gauge<Integer> finderQueueSize = Metrics.newGauge(FileTarget.class, "allFinds", "queued", new Gauge<Integer>() {
         @Override
         public Integer value() {
             return finderQueue.size();
         }
     });
-
-    static final LinkedBlockingQueue<Runnable> finderQueue = new LinkedBlockingQueue<>(finderQueueSafetyDrop);
-
+    private static final Logger log = LoggerFactory.getLogger(FileTarget.class);
     private static final ExecutorService finderPool = MoreExecutors
             .getExitingExecutorService(new ThreadPoolExecutor(finderThreads, finderThreads, 0L, TimeUnit.MILLISECONDS,
                     finderQueue,
@@ -114,6 +87,21 @@ public class FileTarget extends TargetHandler implements Runnable {
     private String scope = null;
 
     private volatile ForwardingFileSource remoteSource = null;
+
+    private static String peersToString(Iterable<Channel> peers) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            for (Channel peer : peers) {
+                if (sb.length() > 0) {
+                    sb.append(',');
+                }
+                sb.append(((InetSocketAddress) peer.remoteAddress()).getHostName());
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return e.getMessage();
+        }
+    }
 
     @Override
     public void receive(int length, ByteBuf buffer) throws Exception {
@@ -209,7 +197,7 @@ public class FileTarget extends TargetHandler implements Runnable {
     /**
      * perform the find. called by finder threads from an executor service. see run()
      */
-    public void doFind() throws IOException {
+    private void doFind() {
         findsRunning.inc();
         try {
             //should we ask other meshy nodes for file references as well?
@@ -233,7 +221,7 @@ public class FileTarget extends TargetHandler implements Runnable {
                 } catch (ChannelException ignored) {
                     // can happen when there are no remote hosts
                     if (forwardMetaData) {
-                        forwardPeerList(Collections.<Channel>emptyList());
+                        forwardPeerList(Collections.emptyList());
                     }
                 }
             } //else -- just look ourselves
@@ -293,7 +281,7 @@ public class FileTarget extends TargetHandler implements Runnable {
      * on network activity; it may block on disk i/o or various local handler implementations. Also the
      * results that it sends out may not be recieved as fast as imagined (queuing in meshy output).
      */
-    private void walk(final WalkState state, final String vfsKey, final VirtualFileReference ref, final VFSPath path) throws Exception {
+    private void walk(final WalkState state, final String vfsKey, final VirtualFileReference ref, final VFSPath path) {
         if (canceled.get()) {
             return;
         }
@@ -341,14 +329,14 @@ public class FileTarget extends TargetHandler implements Runnable {
         if (debugCacheLine > 0) {
             long time = System.currentTimeMillis() - mark;
             if (time > debugCacheLine) {
-                String pathString = vfsKey + ":" + path.getRealPath() + "[" + token + "]";
+                String pathString = vfsKey + ':' + path.getRealPath() + '[' + token + ']';
                 log.warn("slow ({}) for {} {{}}", time, pathString, state);
             }
         }
     }
 
     private boolean sendLocalFileRef(FileReference fileReference) {
-        while((currentWindow.get() == 0) && !canceled.get()) {
+        while ((currentWindow.get() == 0) && !canceled.get()) {
             Uninterruptibles.sleepUninterruptibly(10, TimeUnit.MILLISECONDS);
         }
         boolean wasSent = send(fileReference.encode(getChannelMaster().getUUID()));
@@ -364,21 +352,6 @@ public class FileTarget extends TargetHandler implements Runnable {
         int peerCount = peerList.size();
         FileReference flagRef = new FileReference("peers", 0, peerCount);
         send(flagRef.encode(FileTarget.peersToString(peerList)));
-    }
-
-    private static String peersToString(Iterable<Channel> peers) {
-        try {
-            StringBuilder sb = new StringBuilder();
-            for (Channel peer : peers) {
-                if (sb.length() > 0) {
-                    sb.append(',');
-                }
-                sb.append(((InetSocketAddress) peer.remoteAddress()).getHostName());
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            return e.getMessage();
-        }
     }
 
     private static final class VFSPath {
@@ -456,10 +429,11 @@ public class FileTarget extends TargetHandler implements Runnable {
             super(master);
         }
 
-        @Override protected void sendInitialWindowing() {
+        @Override
+        protected void sendInitialWindowing() {
             long totalInitialWindow = FileTarget.this.currentWindow.getAndSet(0);
             if (totalInitialWindow > 0) {
-                synchronized (channels) {
+                 {
                     long peerCount = getPeerCount() + 1;
                     // add peerCount - 1 to round up the division. We'd rather have too many than too few
                     int windowPerPeer = (int) ((totalInitialWindow + peerCount - 1) / peerCount);
@@ -482,7 +456,7 @@ public class FileTarget extends TargetHandler implements Runnable {
                 FileSource.log.debug("Someone requested exactly 0 more window allotment");
                 return;
             }
-            synchronized (channels) {
+             {
                 int peerCount = getPeerCount();
                 int totalNewWindow = windows.size() + additionalWindow;
                 int totalAddedWindow = 0;
@@ -523,7 +497,7 @@ public class FileTarget extends TargetHandler implements Runnable {
                 }
                 if (totalAddedWindow < additionalWindow) {
                     FileSource.log.warn("Failed to allocate all of the requested window allotment ({} < {})",
-                                        totalAddedWindow, additionalWindow);
+                            totalAddedWindow, additionalWindow);
                 }
             }
         }
@@ -538,7 +512,7 @@ public class FileTarget extends TargetHandler implements Runnable {
         protected void start(String targetUuid) {
             super.start(targetUuid);
             if (forwardMetaData) {
-                synchronized (channels) {
+                 {
                     forwardPeerList(channels);
                 }
             }

@@ -13,44 +13,37 @@
  */
 package com.addthis.meshy.service.message;
 
-import java.io.IOException;
-import java.io.InputStream;
-
-import java.util.concurrent.atomic.AtomicLong;
-
-import com.addthis.basis.util.LessBytes;
 import com.addthis.basis.util.JitterClock;
+import com.addthis.basis.util.LessBytes;
 import com.addthis.basis.util.LessStrings;
-
-import com.addthis.meshy.VirtualFileReference;
-import com.addthis.meshy.VirtualFileSystem;
-
+import com.addthis.meshy.service.file.VirtualFileReference;
+import com.addthis.meshy.service.file.VirtualFileSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.concurrent.atomic.AtomicLong;
+
 
 public class MessageFileSystem implements VirtualFileSystem, TargetListener {
-
-    static final Logger log = LoggerFactory.getLogger(MessageFileSystem.class);
 
     /**
      * file open option that overrides system timeout
      */
     public static final String READ_TIMEOUT = "mfs.read.timeout";
-
+    static final Logger log = LoggerFactory.getLogger(MessageFileSystem.class);
     static final String MFS_ADD = "mfs.add";
     static final String MFS_DEL = "mfs.del";
 
     static final AtomicLong nextReplyID = new AtomicLong(1);
-
+    private final MessageFile root;
 
     public MessageFileSystem() {
         root = new MessageFile("", JitterClock.globalTime(), 0);
         MessageTarget.registerListener(MFS_ADD, this);
         MessageTarget.registerListener(MFS_DEL, this);
     }
-
-    private final MessageFile root;
 
     @Override
     public String[] tokenizePath(String path) {

@@ -11,27 +11,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.addthis.meshy;
-
-import javax.annotation.Nonnull;
-
-import java.util.Iterator;
-import java.util.Map;
-
-import java.nio.file.PathMatcher;
+package com.addthis.meshy.service.file;
 
 
-public interface VirtualFileReference {
+public interface VirtualFileFilter {
 
-    public String getName();
+    boolean accept(VirtualFileReference ref);
 
-    public long getLastModified();
+    boolean singleMatch();
 
-    public long getLength();
-
-    public Iterator<VirtualFileReference> listFiles(@Nonnull PathMatcher filter);
-
-    public VirtualFileReference getFile(String name);
-
-    public VirtualFileInput getInput(Map<String, String> options);
+    String getToken();
 }

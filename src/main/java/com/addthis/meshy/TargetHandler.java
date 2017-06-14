@@ -13,15 +13,13 @@
  */
 package com.addthis.meshy;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import com.google.common.base.Objects;
-
+import io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.buffer.ByteBuf;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.addthis.meshy.MeshyConstants.KEY_RESPONSE;
 
@@ -37,7 +35,7 @@ public abstract class TargetHandler implements SessionHandler {
     private ChannelState channelState;
     private int session;
 
-    public TargetHandler() {
+    protected TargetHandler() {
     }
 
     public void setContext(MeshyServer master, ChannelState state, int session) {
@@ -59,7 +57,7 @@ public abstract class TargetHandler implements SessionHandler {
         return toStringHelper().toString();
     }
 
-    public ChannelState getChannelState() {
+    protected ChannelState getChannelState() {
         return channelState;
     }
 
@@ -80,23 +78,24 @@ public abstract class TargetHandler implements SessionHandler {
         channelState.send(channelState.allocateSendBuffer(KEY_RESPONSE, session, from, length), null, length);
     }
 
-    @Override public boolean send(byte[] data, SendWatcher watcher) {
+    @Override
+    public boolean send(byte[] data, SendWatcher watcher) {
         log.trace("{} send {}", this, data.length);
         return channelState.send(channelState.allocateSendBuffer(KEY_RESPONSE, session, data),
-                                 watcher, data.length);
+                watcher, data.length);
     }
 
     public void send(byte[] data, int off, int len, SendWatcher watcher) {
         log.trace("{} send {} o={} l={}", this, data.length, off, len);
         channelState.send(channelState.allocateSendBuffer(KEY_RESPONSE, session, data, off, len),
-                          watcher, len);
+                watcher, len);
     }
 
-    public ByteBuf getSendBuffer(int length) {
+    protected ByteBuf getSendBuffer(int length) {
         return channelState.allocateSendBuffer(KEY_RESPONSE, session, length);
     }
 
-    public int send(ByteBuf buffer, SendWatcher watcher) {
+    protected int send(ByteBuf buffer, SendWatcher watcher) {
         if (log.isTraceEnabled()) {
             log.trace("{} send b={} l={}", this, buffer, buffer.readableBytes());
         }
@@ -155,9 +154,9 @@ public abstract class TargetHandler implements SessionHandler {
         }
     }
 
-    public abstract void channelClosed();
+    protected abstract void channelClosed();
 
-    public abstract void receive(int length, ByteBuf buffer) throws Exception;
+    protected abstract void receive(int length, ByteBuf buffer) throws Exception;
 
-    public abstract void receiveComplete() throws Exception;
+    protected abstract void receiveComplete() throws Exception;
 }

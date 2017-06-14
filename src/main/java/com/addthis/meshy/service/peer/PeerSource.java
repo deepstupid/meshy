@@ -17,10 +17,8 @@ import com.addthis.meshy.ChannelState;
 import com.addthis.meshy.Meshy;
 import com.addthis.meshy.MeshyServer;
 import com.addthis.meshy.SourceHandler;
-
-import org.slf4j.Logger;
-
 import io.netty.buffer.ByteBuf;
+import org.slf4j.Logger;
 
 import static com.addthis.meshy.service.peer.PeerService.decodeExtraPeers;
 import static com.addthis.meshy.service.peer.PeerService.decodePrimaryPeer;

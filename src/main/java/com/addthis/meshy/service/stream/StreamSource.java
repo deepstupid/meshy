@@ -13,38 +13,28 @@
  */
 package com.addthis.meshy.service.stream;
 
-import javax.annotation.Nullable;
+import com.addthis.basis.util.LessBytes;
+import com.addthis.basis.util.Parameter;
+import com.addthis.meshy.*;
+import com.google.common.base.Objects;
+import com.google.common.base.Throwables;
+import io.netty.buffer.ByteBuf;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-import com.addthis.basis.util.LessBytes;
-import com.addthis.basis.util.Parameter;
-
-import com.addthis.meshy.ChannelMaster;
-import com.addthis.meshy.ChannelState;
-import com.addthis.meshy.Meshy;
-import com.addthis.meshy.MeshyConstants;
-import com.addthis.meshy.SourceHandler;
-
-import com.google.common.base.Objects;
-import com.google.common.base.Throwables;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.netty.buffer.ByteBuf;
-
 public class StreamSource extends SourceHandler {
 
-    protected static final Logger log = LoggerFactory.getLogger(StreamSource.class);
+    private static final Logger log = LoggerFactory.getLogger(StreamSource.class);
 
     /* denominator used to decide when to request more bytes */
     private static final int REFILL_FACTOR = Parameter.intValue("meshy.refill.factor", 2);
@@ -53,7 +43,8 @@ public class StreamSource extends SourceHandler {
     /* pre-fetch stream on open */
     private static final boolean FETCH_ON_OPEN = Parameter.boolValue("meshy.stream.prefetch", false);
 
-    @Nullable private final BlockingQueue<byte[]> messageQueue;
+    @Nullable
+    private final BlockingQueue<byte[]> messageQueue;
 
     private final String fileName;
     private final String nodeUuid;
@@ -66,10 +57,11 @@ public class StreamSource extends SourceHandler {
     private final AtomicLong recvBytes;
     private final AtomicBoolean closeSent;
 
-    @Nullable private volatile String err = StreamService.ERROR_UNKNOWN;
+    @Nullable
+    private volatile String err = StreamService.ERROR_UNKNOWN;
 
     /* client-server constructor */
-    public StreamSource(ChannelMaster master, String nodeUuid, String fileName, int bufferSize) throws IOException {
+    public StreamSource(ChannelMaster master, String nodeUuid, String fileName, int bufferSize) {
         this(master, MeshyConstants.LINK_ALL, nodeUuid, fileName, null /* params */, bufferSize);
     }
 
@@ -78,7 +70,7 @@ public class StreamSource extends SourceHandler {
                         String nodeUuid,
                         String fileName,
                         Map<String, String> params,
-                        int bufferSize) throws IOException {
+                        int bufferSize) {
         this(master, MeshyConstants.LINK_ALL, nodeUuid, fileName, params, bufferSize);
     }
 
@@ -206,7 +198,7 @@ public class StreamSource extends SourceHandler {
 
     public final void performBufferAccounting(byte[] data) {
         int sizeIncludingOverhead = data.length + ChannelState.MESHY_BYTE_OVERHEAD
-                                     + StreamService.STREAM_BYTE_OVERHEAD;
+                + StreamService.STREAM_BYTE_OVERHEAD;
 
         // returns previous value
         long oldExpectingBytes = expectingBytes.getAndAdd(-sizeIncludingOverhead);
@@ -220,7 +212,7 @@ public class StreamSource extends SourceHandler {
                 int overflowRecoverCount = (sizeIncludingOverhead / maxBufferSize) + 1;
                 if (overflowRecoverCount != 1) {
                     log.warn("Sending {} sendMore requests due to pathologically large chunk of size {}",
-                             overflowRecoverCount, sizeIncludingOverhead);
+                            overflowRecoverCount, sizeIncludingOverhead);
                 }
                 requestMoreData(overflowRecoverCount);
             }
@@ -228,7 +220,7 @@ public class StreamSource extends SourceHandler {
         log.trace("{} fill take={}", this, data.length);
     }
 
-    public final boolean isCloseSignal(byte[] data) {
+    public static boolean isCloseSignal(byte[] data) {
         if ((data.length == 0) && (data != StreamService.FAIL_BYTES)) {
             if (data != StreamService.CLOSE_BYTES) {
                 log.debug("size zero application layer data found");
@@ -244,11 +236,11 @@ public class StreamSource extends SourceHandler {
         }
     }
 
-    public final void requestMoreData() {
+    private void requestMoreData() {
         requestMoreData(1);
     }
 
-    public final void requestMoreData(long times) {
+    private void requestMoreData(long times) {
         expectingBytes.addAndGet((long) maxBufferSize * times);
         for (int i = 0; i < times; i++) {
             moreRequests.incrementAndGet();
@@ -256,7 +248,7 @@ public class StreamSource extends SourceHandler {
         }
     }
 
-    public boolean maybePrime() {
+    private boolean maybePrime() {
         if (moreRequests.compareAndSet(0, 1)) {
             // avoid double incrementing moreRequests
             expectingBytes.addAndGet((long) maxBufferSize);
@@ -271,19 +263,20 @@ public class StreamSource extends SourceHandler {
         send(new byte[]{StreamService.MODE_MORE});
     }
 
-    @Override public String toString() {
+    @Override
+    public String toString() {
         return Objects.toStringHelper(this)
-                      .add("messageQueue.size", (messageQueue == null) ? "(queue is null)" : messageQueue.size())
-                      .add("fileName", fileName)
-                      .add("nodeUuid", nodeUuid)
-                      .add("maxBufferSize", maxBufferSize)
-                      .add("refillThreshold", refillThreshold)
-                      .add("isProxy", isProxy)
-                      .add("expectingBytes", expectingBytes)
-                      .add("moreRequests", moreRequests)
-                      .add("recvBytes", recvBytes)
-                      .add("closeSent", closeSent)
-                      .add("err", err)
-                      .toString();
+                .add("messageQueue.size", (messageQueue == null) ? "(queue is null)" : messageQueue.size())
+                .add("fileName", fileName)
+                .add("nodeUuid", nodeUuid)
+                .add("maxBufferSize", maxBufferSize)
+                .add("refillThreshold", refillThreshold)
+                .add("isProxy", isProxy)
+                .add("expectingBytes", expectingBytes)
+                .add("moreRequests", moreRequests)
+                .add("recvBytes", recvBytes)
+                .add("closeSent", closeSent)
+                .add("err", err)
+                .toString();
     }
 }

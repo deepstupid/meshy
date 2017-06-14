@@ -13,26 +13,18 @@
  */
 package com.addthis.meshy.service.host;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-
-import java.net.InetSocketAddress;
-
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-
 import com.addthis.basis.util.LessBytes;
-
 import com.addthis.meshy.ChannelMaster;
 import com.addthis.meshy.ChannelState;
 import com.addthis.meshy.Meshy;
 import com.addthis.meshy.SourceHandler;
 import com.addthis.meshy.service.peer.PeerService;
-
 import io.netty.buffer.ByteBuf;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.net.InetSocketAddress;
+import java.util.*;
 
 public class HostSource extends SourceHandler {
 

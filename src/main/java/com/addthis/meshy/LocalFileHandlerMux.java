@@ -13,28 +13,27 @@
  */
 package com.addthis.meshy;
 
-import java.io.File;
-
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.Map;
-
-import java.nio.file.PathMatcher;
-import java.nio.file.Paths;
-
+import com.addthis.meshy.service.file.VirtualFileInput;
+import com.addthis.meshy.service.file.VirtualFileReference;
 import com.addthis.muxy.MuxFile;
 import com.addthis.muxy.ReadMuxFileDirectory;
 import com.addthis.muxy.ReadMuxFileDirectoryCache;
-
 import com.google.common.base.Objects;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.nio.file.PathMatcher;
+import java.nio.file.Paths;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Map;
 
 
 public class LocalFileHandlerMux implements LocalFileHandler {
 
     private static final Logger log = LoggerFactory.getLogger(LocalFileHandlerMux.class);
+    public static final boolean muxEnabled = !Boolean.getBoolean("meshy.muxy.disable") && checkForMux();
 
     private static boolean checkForMux() {
         try {
@@ -46,8 +45,6 @@ public class LocalFileHandlerMux implements LocalFileHandler {
             return false;
         }
     }
-
-    public static final boolean muxEnabled = !Boolean.getBoolean("meshy.muxy.disable") && checkForMux();
 
     @Override
     public boolean canHandleDirectory(File dir) {
@@ -107,7 +104,9 @@ public class LocalFileHandlerMux implements LocalFileHandler {
             return meta.getLength();
         }
 
-        /** mux files cannot have sub-directories */
+        /**
+         * mux files cannot have sub-directories
+         */
         @Override
         public Iterator<VirtualFileReference> listFiles(PathMatcher filter) {
             return null;

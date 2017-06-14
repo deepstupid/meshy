@@ -15,5 +15,5 @@ package com.addthis.meshy.service.message;
 
 interface OutputSender {
 
-    public boolean send(byte[] data);
+    boolean send(byte[] data);
 }

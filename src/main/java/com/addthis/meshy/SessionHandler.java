@@ -15,7 +15,7 @@ package com.addthis.meshy;
 
 import io.netty.buffer.ByteBuf;
 
-public interface SessionHandler {
+interface SessionHandler {
 
     boolean send(byte[] data, SendWatcher watcher);
 

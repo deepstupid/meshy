@@ -13,34 +13,24 @@
  */
 package com.addthis.meshy;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-
-import java.net.InetSocketAddress;
-
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-
-import java.text.DecimalFormat;
-
 import com.addthis.basis.util.JitterClock;
 import com.addthis.basis.util.LessStrings;
-
 import com.addthis.meshy.service.file.DupFilter;
 import com.addthis.meshy.service.file.FileReference;
 import com.addthis.meshy.service.file.FileSource;
 import com.addthis.meshy.service.host.HostNode;
 import com.addthis.meshy.service.host.HostSource;
 import com.addthis.meshy.service.stream.StreamSource;
-
 import io.netty.util.concurrent.Future;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetSocketAddress;
+import java.text.DecimalFormat;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class Main {
 
@@ -57,7 +47,7 @@ public final class Main {
                         FileSource fileSource = new FileSource(more, new String[]{args[4]});
                         fileSource.waitComplete();
                         for (FileReference file : fileSource.getFileList()) {
-                            System.out.println(file.getHostUUID() + " " + file.name + " \t " + file.size + " \t " + new Date(file.lastModified));
+                            System.out.println(file.getHostUUID() + ' ' + file.name + " \t " + file.size + " \t " + new Date(file.lastModified));
                         }
                     } else if ("cat".equals(cmd) && (args.length > 5)) {
                         StreamSource source = null;
@@ -237,9 +227,9 @@ public final class Main {
             }
             for (MeshyServer server : meshNodes) {
                 Thread shutdownThread = new Thread(() -> {
-                        MeshyServer.log.info("Running meshy shutdown hook..");
-                        server.close();
-                        MeshyServer.log.info("Shutdown hook for meshy complete.");
+                    MeshyServer.log.info("Running meshy shutdown hook..");
+                    server.close();
+                    MeshyServer.log.info("Shutdown hook for meshy complete.");
                 }, "Shutdown hook for " + server.getUUID());
                 Runtime.getRuntime().addShutdownHook(shutdownThread);
                 server.closeFuture().addListener((Future<Object> future) -> {
@@ -255,8 +245,8 @@ public final class Main {
                     for (MeshyServer meshNode : meshNodes) {
                         String[] hostPort = LessStrings.splitArray(peer, ":");
                         int port = (hostPort.length > 1) ?
-                                   Integer.parseInt(hostPort[1]) :
-                                   meshNode.getLocalAddress().getPort();
+                                Integer.parseInt(hostPort[1]) :
+                                meshNode.getLocalAddress().getPort();
                         meshNode.connectPeer(new InetSocketAddress(hostPort[0], port));
                     }
                 }

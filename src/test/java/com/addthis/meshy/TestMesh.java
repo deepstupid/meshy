@@ -83,7 +83,7 @@ public class TestMesh {
     }
 
     public boolean waitQuiescent() throws InterruptedException {
-        return waitQuiescent(2000, 30000);
+        return waitQuiescent(250, 2000);
     }
 
     /**
@@ -104,7 +104,7 @@ public class TestMesh {
             if (JitterClock.globalTime() - mark > maxWait) {
                 return false;
             }
-            Thread.sleep(100);
+            Thread.sleep(20);
         }
     }
 

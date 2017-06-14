@@ -13,27 +13,23 @@
  */
 package com.addthis.meshy.service.host;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-
-import java.net.InetSocketAddress;
-
-import java.util.Collection;
-
 import com.addthis.basis.util.LessBytes;
 import com.addthis.basis.util.LessStrings;
-
 import com.addthis.meshy.ChannelState;
 import com.addthis.meshy.Meshy;
 import com.addthis.meshy.MeshyConstants;
 import com.addthis.meshy.TargetHandler;
 import com.addthis.meshy.service.peer.PeerService;
-
 import io.netty.buffer.ByteBuf;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.net.InetSocketAddress;
+import java.util.Collection;
 
 public class HostTarget extends TargetHandler {
 
-    boolean canceled = false;
+    private boolean canceled = false;
 
     @Override
     public void receive(int length, ByteBuf buffer) throws Exception {
@@ -63,7 +59,7 @@ public class HostTarget extends TargetHandler {
         for (ChannelState linkState : links) {
             InetSocketAddress remote = linkState.getRemoteAddress();
             if (remote == null) {
-                remote = (InetSocketAddress) linkState.getChannel().remoteAddress();
+                remote = linkState.getChannel().remoteAddress();
                 log.debug("missing remote for {} @ {}", remote, linkState);
             }
             LessBytes.writeString(linkState.getName() != null ? linkState.getName() : "<null>", out);

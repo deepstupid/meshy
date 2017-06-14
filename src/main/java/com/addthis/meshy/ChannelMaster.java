@@ -20,7 +20,9 @@ public interface ChannelMaster {
 
     String getUUID();
 
-    /** session handler factory */
+    /**
+     * session handler factory
+     */
     TargetHandler createHandler(int type);
 
     Collection<ChannelState> getChannels(String nameFilter);

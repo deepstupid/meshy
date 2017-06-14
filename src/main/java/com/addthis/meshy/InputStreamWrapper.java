@@ -13,18 +13,17 @@
  */
 package com.addthis.meshy;
 
+import com.addthis.basis.util.Parameter;
+import com.addthis.meshy.service.file.VirtualFileInput;
+import com.yammer.metrics.Metrics;
+import com.yammer.metrics.core.Meter;
+
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
-
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-
-import com.addthis.basis.util.Parameter;
-
-import com.yammer.metrics.Metrics;
-import com.yammer.metrics.core.Meter;
 
 /**
  * simple wrapper.  does not attempt to follow nextBytes() wait
@@ -37,26 +36,24 @@ public class InputStreamWrapper implements VirtualFileInput {
     private static final AtomicLong shortRead = new AtomicLong(0);
     private static final int DEFAULT_BUFFER = Parameter.intValue("meshy.input.wrapper.buffer", 16000);
     private static final int DEFAULT_MINIMUM = Parameter.intValue("meshy.input.wrapper.bufferMin", 16000);
-
-    public static long getShortReadCount() {
-        return shortRead.getAndSet(0);
-    }
-
     private final byte[] buf;
     private final InputStream input;
     private boolean done;
-
     public InputStreamWrapper(InputStream input) {
         /* leave overhead for framing when creating wrapper buffers (powers of 2) */
         this(input, DEFAULT_BUFFER);
     }
 
-    public InputStreamWrapper(InputStream input, int bufSize) {
+    private InputStreamWrapper(InputStream input, int bufSize) {
         this.input = input;
         this.buf = new byte[bufSize];
     }
 
-    public byte[] readBytes(InputStream in, byte[] b, int min) throws IOException {
+    public static long getShortReadCount() {
+        return shortRead.getAndSet(0);
+    }
+
+    private byte[] readBytes(InputStream in, byte[] b, int min) throws IOException {
         int got = 0;
         int read = 0;
         while (got < min && (read = in.read(b, got, b.length - got)) >= 0) {

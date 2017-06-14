@@ -27,6 +27,6 @@ public class HostNode {
 
     @Override
     public String toString() {
-        return uuid + "@" + address;
+        return uuid + '@' + address;
     }
 }

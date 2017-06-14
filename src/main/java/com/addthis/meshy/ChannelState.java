@@ -13,34 +13,27 @@
  */
 package com.addthis.meshy;
 
-import javax.annotation.Nullable;
-
-import java.net.InetSocketAddress;
-
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import com.addthis.basis.util.Parameter;
-
 import com.addthis.meshy.service.file.FileTarget;
-
 import com.google.common.base.Objects;
-
 import com.yammer.metrics.Metrics;
 import com.yammer.metrics.core.Meter;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundBuffer;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nullable;
+import java.net.InetSocketAddress;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.google.common.util.concurrent.Uninterruptibles.sleepUninterruptibly;
 import static java.lang.Math.max;
@@ -48,46 +41,37 @@ import static java.lang.Math.min;
 
 
 public class ChannelState extends ChannelDuplexHandler {
+    static final int BUFFER_SIZE = 64 * 1024;
 
+    public static final int MESHY_BYTE_OVERHEAD = 4 + 4 + 4;
+    static final AtomicInteger writeSleeps = new AtomicInteger(0);
+    private static final Meter sleepMeter = Metrics.newMeter(FileTarget.class, "writeSleeps", "sleeps", TimeUnit.SECONDS);
     private static final Logger log = LoggerFactory.getLogger(ChannelState.class);
     private static final int excessiveTargets = Parameter.intValue("meshy.channel.report.targets", 2000);
     private static final int excessiveSources = Parameter.intValue("meshy.channel.report.sources", 2000);
-
-    static final AtomicInteger writeSleeps = new AtomicInteger(0);
-    static final Meter sleepMeter = Metrics.newMeter(FileTarget.class, "writeSleeps", "sleeps", TimeUnit.SECONDS);
-
-    public static final int MESHY_BYTE_OVERHEAD = 4 + 4 + 4;
-
-    protected static enum READMODE {
-        ReadType, ReadSession, ReadLength, ReadData
-    }
-
     private final ConcurrentMap<Integer, SessionHandler> targetHandlers = new ConcurrentHashMap<>();
     private final ConcurrentMap<Integer, SourceHandler> sourceHandlers = new ConcurrentHashMap<>();
     private final Meshy meshy;
     private final NioSocketChannel channel;
-
     // internal buffer initialized when channel becomes active. Would be final, but can't reliably clean up
     // every constructed instance (channelUnregistered is not well supported)
     private ByteBuf buffer;
-
     // frame parsing state
     private READMODE mode = READMODE.ReadType;
     // last session id for which a handler was created on this channel. should always be > than the last
     private int type;
     private int session;
     private int length;
-
     // can be concurrently modified by the peering service; guarded by the connected channels sync
     private String name;
     private InetSocketAddress remoteAddress;
-
     ChannelState(Meshy meshy, NioSocketChannel channel) {
         this.meshy = meshy;
         this.channel = channel;
     }
 
-    @Override public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if (msg instanceof ByteBuf) {
             meshy.updateLastEventTime();
             messageReceived((ByteBuf) msg);
@@ -103,14 +87,17 @@ public class ChannelState extends ChannelDuplexHandler {
         ctx.channel().close();
     }
 
-    @Override public void channelActive(ChannelHandlerContext ctx) {
-        buffer = ctx.alloc().buffer(16384);
+
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) {
+        buffer = ctx.alloc().buffer(BUFFER_SIZE);
         meshy.updateLastEventTime();
         channelConnected();
         meshy.channelConnected(ctx.channel(), this);
     }
 
-    @Override public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         try {
             meshy.updateLastEventTime();
             channelClosed();
@@ -120,7 +107,7 @@ public class ChannelState extends ChannelDuplexHandler {
         }
     }
 
-    protected Objects.ToStringHelper toStringHelper() {
+    private Objects.ToStringHelper toStringHelper() {
         return Objects.toStringHelper(this)
                 .add("targets", targetHandlers.size())
                 .add("sources", sourceHandlers.size())
@@ -140,7 +127,7 @@ public class ChannelState extends ChannelDuplexHandler {
     }
 
     /* helper to debug close() with open sessions/targets */
-    protected void debugSessions() {
+    void debugSessions() {
         if (!targetHandlers.isEmpty()) {
             log.info("{} targets --> {}", this, targetHandlers);
         }
@@ -158,10 +145,10 @@ public class ChannelState extends ChannelDuplexHandler {
                 channel.unsafe().forceFlush();
             }
             if (channel.isWritable()
-                || (attempts >= 500)
-                // if this thread is the io loop for this channel: block writes only based on the actual socket queue;
-                // channel writability factors in queued writes from other threads that we can't get to until we finish.
-                || (inEventLoop && (channel.unsafe().outboundBuffer().size() < estimateMaxQueued(sendBuffer)))) {
+                    || (attempts >= 500)
+                    // if this thread is the io loop for this channel: block writes only based on the actual socket queue;
+                    // channel writability factors in queued writes from other threads that we can't get to until we finish.
+                    || (inEventLoop && (channel.unsafe().outboundBuffer().size() < estimateMaxQueued(sendBuffer)))) {
                 if (attempts >= 500) {
                     log.warn("Forcing write despite channel being backed up to prevent possible distributed deadlock");
                 }
@@ -178,7 +165,7 @@ public class ChannelState extends ChannelDuplexHandler {
                     ChannelOutboundBuffer outboundBuffer = channel.unsafe().outboundBuffer();
                     if (outboundBuffer != null) {
                         log.info("Sleeping write because channel is unwritable. Attempt: {}, Pending Bytes: {}, State: {}",
-                                 attempts, outboundBuffer.totalPendingWriteBytes(), this);
+                                attempts, outboundBuffer.totalPendingWriteBytes(), this);
                     }
                 }
                 sleepUninterruptibly(10, TimeUnit.MILLISECONDS);
@@ -234,7 +221,8 @@ public class ChannelState extends ChannelDuplexHandler {
         return channel;
     }
 
-    @Nullable public InetSocketAddress getChannelRemoteAddress() {
+    @Nullable
+    public InetSocketAddress getChannelRemoteAddress() {
         return channel.remoteAddress();
     }
 
@@ -259,11 +247,11 @@ public class ChannelState extends ChannelDuplexHandler {
         }
     }
 
-    public void channelConnected() {
+    private void channelConnected() {
         log.debug("{} channel:connect [{}]", this, this.hashCode());
     }
 
-    public void channelClosed() throws Exception {
+    private void channelClosed() throws Exception {
         log.debug("{} channel:close [{}]", this, this.hashCode());
         for (Map.Entry<Integer, SessionHandler> entry : targetHandlers.entrySet()) {
             entry.getValue().receiveComplete(this, entry.getKey());
@@ -273,7 +261,7 @@ public class ChannelState extends ChannelDuplexHandler {
         }
     }
 
-    public void messageReceived(ByteBuf in) {
+    private void messageReceived(ByteBuf in) {
         log.trace("{} recv msg={}", this, in);
         meshy.recvBytes(in.readableBytes());
         buffer.writeBytes(in);
@@ -406,5 +394,9 @@ public class ChannelState extends ChannelDuplexHandler {
         sendBuffer.writeInt(length);
         sendBuffer.writeBytes(from, length);
         return sendBuffer;
+    }
+
+    protected enum READMODE {
+        ReadType, ReadSession, ReadLength, ReadData
     }
 }

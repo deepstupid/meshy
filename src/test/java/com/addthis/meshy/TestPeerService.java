@@ -89,7 +89,7 @@ public class TestPeerService extends TestMesh {
 
     @Test
     public void manyPeers() throws Exception {
-        final int serverCount = 20;
+        final int serverCount = 10;
         List<MeshyServer> servers = new LinkedList<>();
         for (int i = 0; i < serverCount; i++) {
             servers.add(getServer());

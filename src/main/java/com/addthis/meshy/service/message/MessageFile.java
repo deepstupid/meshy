@@ -13,26 +13,21 @@
  */
 package com.addthis.meshy.service.message;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.Map;
+import com.addthis.basis.util.JitterClock;
+import com.addthis.meshy.service.file.VirtualFileInput;
+import com.addthis.meshy.service.file.VirtualFileReference;
 
 import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
-
-import com.addthis.basis.util.JitterClock;
-
-import com.addthis.meshy.VirtualFileInput;
-import com.addthis.meshy.VirtualFileReference;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 class MessageFile implements VirtualFileReference {
 
-    private long lastModified;
     private final String name;
     private final long length;
-    private final HashMap<String, MessageFile> files = new HashMap<>();
+    private final Map<String, MessageFile> files = new ConcurrentHashMap<>();
+    private long lastModified;
 
     MessageFile(String name, long lastModified, long length) {
         this.name = name;
@@ -41,14 +36,14 @@ class MessageFile implements VirtualFileReference {
     }
 
     void addFile(String fileName, MessageFile file) {
-        synchronized (files) {
+         {
             files.put(fileName, file);
         }
         lastModified = JitterClock.globalTime();
     }
 
     void removeFile(String fileName) {
-        synchronized (files) {
+         {
             files.remove(fileName);
         }
         lastModified = JitterClock.globalTime();
@@ -56,7 +51,7 @@ class MessageFile implements VirtualFileReference {
 
     void removeFiles(final TopicSender target) {
         LinkedList<String> names = new LinkedList<>();
-        synchronized (files) {
+         {
             for (Map.Entry<String, MessageFile> e : files.entrySet()) {
                 MessageFile mf = e.getValue();
                 // TODO this probably isn't good
@@ -89,7 +84,7 @@ class MessageFile implements VirtualFileReference {
 
     @Override
     public Iterator<VirtualFileReference> listFiles(PathMatcher filter) {
-        synchronized (files) {
+         {
             if (files.isEmpty()) {
                 return null;
             }
@@ -105,7 +100,7 @@ class MessageFile implements VirtualFileReference {
 
     @Override
     public VirtualFileReference getFile(String fileName) {
-        synchronized (files) {
+         {
             return files.get(fileName);
         }
     }

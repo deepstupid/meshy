@@ -13,20 +13,18 @@
  */
 package com.addthis.meshy.service.message;
 
+import com.addthis.basis.util.LessBytes;
+import com.addthis.basis.util.Parameter;
+import com.addthis.meshy.service.file.VirtualFileInput;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import com.addthis.basis.util.LessBytes;
-import com.addthis.basis.util.Parameter;
-
-import com.addthis.meshy.VirtualFileInput;
 
 class MessageFileInput implements VirtualFileInput, TargetListener {
 
@@ -115,7 +113,7 @@ class MessageFileInput implements VirtualFileInput, TargetListener {
             gate.release();
         } else {
             MessageFileSystem.log.warn("received reply on invalid topic topic={} data={}", topic,
-                                       Arrays.toString(data));
+                    Arrays.toString(data));
         }
     }
 

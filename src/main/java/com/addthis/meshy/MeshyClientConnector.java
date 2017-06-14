@@ -14,7 +14,6 @@
 package com.addthis.meshy;
 
 import java.io.IOException;
-
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -42,7 +41,7 @@ public abstract class MeshyClientConnector extends Thread {
         this.initDelay = initDelay;
         this.retryWait = retryWait;
         setDaemon(true);
-        setName("MeshyClient Re-Connector to " + host + ":" + port);
+        setName("MeshyClient Re-Connector to " + host + ':' + port);
         start();
     }
 
@@ -70,9 +69,7 @@ public abstract class MeshyClientConnector extends Thread {
         while (!done.get()) {
             try {
                 MeshyClient client = new MeshyClient(host, port);
-                client.getClientChannelCloseFuture().addListener(future -> {
-                    linkDown(ref.getAndSet(null));
-                });
+                client.getClientChannelCloseFuture().addListener(future -> linkDown(ref.getAndSet(null)));
                 ref.set(client);
                 linkUp(client);
                 while (ref.get() != null) {

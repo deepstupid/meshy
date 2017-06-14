@@ -13,8 +13,19 @@
  */
 package com.addthis.meshy.service.stream;
 
-import java.io.ByteArrayInputStream;
+import com.addthis.basis.util.LessBytes;
+import com.addthis.basis.util.Parameter;
+import com.addthis.meshy.*;
+import com.addthis.meshy.service.file.VirtualFileInput;
+import com.addthis.meshy.service.file.VirtualFileReference;
+import com.addthis.meshy.service.file.VirtualFileSystem;
+import com.google.common.base.Objects;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import io.netty.buffer.ByteBuf;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -24,42 +35,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.addthis.basis.util.LessBytes;
-import com.addthis.basis.util.Parameter;
-
-import com.addthis.meshy.ChannelState;
-import com.addthis.meshy.Meshy;
-import com.addthis.meshy.SendWatcher;
-import com.addthis.meshy.TargetHandler;
-import com.addthis.meshy.VirtualFileInput;
-import com.addthis.meshy.VirtualFileReference;
-import com.addthis.meshy.VirtualFileSystem;
-
-import com.google.common.base.Objects;
-import com.google.common.util.concurrent.MoreExecutors;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.netty.buffer.ByteBuf;
-
 public class StreamTarget extends TargetHandler implements Runnable, SendWatcher {
 
-    protected static final Logger log = LoggerFactory.getLogger(StreamTarget.class);
-
+    private static final Logger log = LoggerFactory.getLogger(StreamTarget.class);
+    /* max number of concurrently open streams */
+    private static final int MAX_OPEN_STREAMS = Parameter.intValue("meshy.stream.maxopen", 1000);
+    /* create N sender threads ? */
+    private static final int SENDER_THREADS = Parameter.intValue("meshy.senders", 1);
+    static final LinkedBlockingQueue<Runnable> senderQueue =
+            new LinkedBlockingQueue<>(MAX_OPEN_STREAMS - SENDER_THREADS);
     /* max outstanding unack'd writes */
     private static final int MAX_SEND_BUFFER =
             Parameter.intValue("meshy.send.buffer", 5) * 1024 * 1024;
-
-    /* max number of concurrently open streams */
-    static final int MAX_OPEN_STREAMS = Parameter.intValue("meshy.stream.maxopen", 1000);
-    /* create N sender threads ? */
-    static final int SENDER_THREADS   = Parameter.intValue("meshy.senders", 1);
-
-    static final LinkedBlockingQueue<Runnable> senderQueue =
-            new LinkedBlockingQueue<>(MAX_OPEN_STREAMS - SENDER_THREADS);
-
     private static final ExecutorService senderPool = new ThreadPoolExecutor(
             SENDER_THREADS, SENDER_THREADS, 0L, TimeUnit.MILLISECONDS, senderQueue,
             new ThreadFactoryBuilder().setNameFormat("sender-%d").setDaemon(true).build());
@@ -69,33 +56,48 @@ public class StreamTarget extends TargetHandler implements Runnable, SendWatcher
             new ThreadFactoryBuilder().setNameFormat("inMemorySender-%d").setDaemon(true).build());
 
     //closed is only set to true in modeClose
-    private final AtomicBoolean closed         = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
     //streamComplete is only set to true in streamComplete
     private final AtomicBoolean streamComplete = new AtomicBoolean(false);
-    private final AtomicInteger sendRemain     = new AtomicInteger(0);
-    private final AtomicBoolean queueState     = new AtomicBoolean(false);
+    private final AtomicInteger sendRemain = new AtomicInteger(0);
+    private final AtomicBoolean queueState = new AtomicBoolean(false);
 
-    private int              maxSend            = 0;
-    private int              recvMore           = 0;
-    private int              sentBytes          = 0;
-    private VirtualFileInput fileIn             = null;
-    private StreamSource     remoteSource       = null;
-    private String           fileName           = null;
-    private boolean          startFrameReceived = false;
+    private int maxSend = 0;
+    private int recvMore = 0;
+    private int sentBytes = 0;
+    private VirtualFileInput fileIn = null;
+    private StreamSource remoteSource = null;
+    private String fileName = null;
+    private boolean startFrameReceived = false;
+
+    private static VirtualFileReference locateFile(VirtualFileSystem vfs, String path) {
+        log.trace("locate {} --> {}", vfs, path);
+        String[] tokens = vfs.tokenizePath(path);
+        VirtualFileReference fileRef = vfs.getFileRoot();
+        for (String token : tokens) {
+            fileRef = fileRef.getFile(token);
+            if (fileRef == null) {
+                log.trace("no file {} --> {} --> {}", vfs, path, token);
+                return null;
+            }
+        }
+        log.trace("located {} --> {} --> {}", vfs, path, fileRef);
+        return fileRef;
+    }
 
     @Override
     protected Objects.ToStringHelper toStringHelper() {
         return super.toStringHelper()
-                    .add("closed", closed)
-                    .add("streamComplete", streamComplete)
-                    .add("sendRemain", sendRemain)
-                    .add("queueState", queueState)
-                    .add("fileIn", fileIn)
-                    .add("remoteSource", remoteSource)
-                    .add("fileName", fileName)
-                    .add("recvMore", recvMore)
-                    .add("sentBytes", sentBytes)
-                    .add("maxSend", maxSend);
+                .add("closed", closed)
+                .add("streamComplete", streamComplete)
+                .add("sendRemain", sendRemain)
+                .add("queueState", queueState)
+                .add("fileIn", fileIn)
+                .add("remoteSource", remoteSource)
+                .add("fileName", fileName)
+                .add("recvMore", recvMore)
+                .add("sentBytes", sentBytes)
+                .add("maxSend", maxSend);
     }
 
     private void sendFail(String message) {
@@ -123,21 +125,6 @@ public class StreamTarget extends TargetHandler implements Runnable, SendWatcher
             remoteSource.requestClose();
         }
         // cancelling the send tasks should be implicitly done by the enclosing complete calls
-    }
-
-    private static VirtualFileReference locateFile(VirtualFileSystem vfs, String path) {
-        log.trace("locate {} --> {}", vfs, path);
-        String[] tokens = vfs.tokenizePath(path);
-        VirtualFileReference fileRef = vfs.getFileRoot();
-        for (String token : tokens) {
-            fileRef = fileRef.getFile(token);
-            if (fileRef == null) {
-                log.trace("no file {} --> {} --> {}", vfs, path, token);
-                return null;
-            }
-        }
-        log.trace("located {} --> {} --> {}", vfs, path, fileRef);
-        return fileRef;
     }
 
     @Override
@@ -255,7 +242,7 @@ public class StreamTarget extends TargetHandler implements Runnable, SendWatcher
     - Calls sendComplete and complete()
     - Sets closed to true
      */
-    private void modeClose() throws Exception {
+    private void modeClose() {
         log.debug("{} close {} remote={} closed={}", this, fileIn, remoteSource, closed);
         if (closed.compareAndSet(false, true)) {
             log.debug("{} sending close", this);
@@ -270,7 +257,7 @@ public class StreamTarget extends TargetHandler implements Runnable, SendWatcher
      - Closes the file and reduces open stream metrics
      - Sets streamComplete to true
       */
-    private void complete() throws Exception {
+    private void complete() {
         log.debug("{} complete {} remote={} streamComplete={}", this, fileIn, remoteSource, streamComplete);
         if (streamComplete.compareAndSet(false, true) && (fileIn != null)) {
             log.debug("{} close file on complete", this);
@@ -341,13 +328,13 @@ public class StreamTarget extends TargetHandler implements Runnable, SendWatcher
     private int doSendMore(SendWatcher sender) {
         if (log.isTraceEnabled()) {
             log.trace("{} sendMore for {} rem={} closed={} streamComplete={} fileIn={}", this, sender, sendRemain,
-                      closed, streamComplete, fileIn);
+                    closed, streamComplete, fileIn);
         }
         try {
             if (maybeDropSend()) {
                 if (StreamService.LOG_DROP_MORE || log.isDebugEnabled()) {
                     log.debug("{} sendMore drop request sr={}, cl={}, co={}, fi={}", this, sendRemain, closed,
-                              streamComplete, fileIn);
+                            streamComplete, fileIn);
                 }
                 return -1;
             }
@@ -396,7 +383,7 @@ public class StreamTarget extends TargetHandler implements Runnable, SendWatcher
     private class ProxyStreamSource extends StreamSource {
         public ProxyStreamSource(String nodeUuid, Map<String, String> params) {
             super(StreamTarget.this.getChannelMaster(), nodeUuid, nodeUuid,
-                  StreamTarget.this.fileName, params, StreamTarget.this.maxSend);
+                    StreamTarget.this.fileName, params, StreamTarget.this.maxSend);
         }
 
         @Override

@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.addthis.meshy;
+package com.addthis.meshy.service.file;
 
 
 public interface VirtualFileInput {
@@ -29,15 +29,15 @@ public interface VirtualFileInput {
      * @param wait
      * @return byte[] array or null if no bytes are available within the timeout period
      */
-    public byte[] nextBytes(long wait);
+    byte[] nextBytes(long wait);
 
     /**
      * @return true if no more bytes will ever be available to nextBytes(), false otherwise
      */
-    public boolean isEOF();
+    boolean isEOF();
 
     /**
      * close input.  no-op if isEOF() is true.
      */
-    public void close();
+    void close();
 }

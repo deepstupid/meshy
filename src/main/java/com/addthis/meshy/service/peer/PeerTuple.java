@@ -13,15 +13,15 @@
  */
 package com.addthis.meshy.service.peer;
 
-import java.net.InetSocketAddress;
-
 import com.addthis.meshy.MeshyServer;
+
+import java.net.InetSocketAddress;
 
 class PeerTuple {
 
-    final MeshyServer master;
-    final String peerUuid;
-    final InetSocketAddress peerAddress;
+    private final MeshyServer master;
+    private final String peerUuid;
+    private final InetSocketAddress peerAddress;
 
     PeerTuple(MeshyServer master, String peerUuid, InetSocketAddress peerAddress) {
         this.master = master;

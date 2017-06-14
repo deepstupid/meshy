@@ -13,43 +13,42 @@
  */
 package com.addthis.meshy;
 
+import com.addthis.meshy.service.file.FileReference;
+import com.addthis.meshy.service.file.FileSource;
+import com.addthis.meshy.service.stream.SourceInputStream;
+import com.addthis.meshy.service.stream.StreamSource;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.util.concurrent.Future;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
-
 import java.net.InetSocketAddress;
-
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.addthis.meshy.service.file.FileReference;
-import com.addthis.meshy.service.file.FileSource;
-import com.addthis.meshy.service.stream.SourceInputStream;
-import com.addthis.meshy.service.stream.StreamSource;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.util.concurrent.Future;
-
 
 public class MeshyClient extends Meshy {
 
     private static final Logger log = LoggerFactory.getLogger(MeshyClient.class);
-
+    private final ChannelFuture clientChannelCloseFuture;
+    private final Semaphore clientInitGate = new Semaphore(1);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private ChannelState clientState;
+    private int bufferSize;
     /**
      * client
      */
     public MeshyClient(String host, int port) throws IOException {
         this(new InetSocketAddress(host, port));
     }
-
     /**
      * client
      */
-    public MeshyClient(InetSocketAddress address) throws IOException {
+    private MeshyClient(InetSocketAddress address) throws IOException {
         super();
         /* block session creation until connection is fully established */
         try {
@@ -77,7 +76,7 @@ public class MeshyClient extends Meshy {
 
     @Override
     public String toString() {
-        return "MC:{" + getUUID() + ",sm=" + getChannelCount() + "}";
+        return "MC:{" + getUUID() + ",sm=" + getChannelCount() + '}';
     }
 
     /**
@@ -87,16 +86,9 @@ public class MeshyClient extends Meshy {
         return clientChannelCloseFuture;
     }
 
-    private final ChannelFuture clientChannelCloseFuture;
-    private final Semaphore clientInitGate = new Semaphore(1);
-    private final AtomicBoolean closed = new AtomicBoolean(false);
-
-    private ChannelState clientState;
-    private int bufferSize;
-
     /**
      * @return peer uuid <b>only</b> if this is a pure client
-     *         otherwise returns a null
+     * otherwise returns a null
      */
     public String getPeerUUID() {
         return clientState != null ? clientState.getName() : null;
@@ -109,7 +101,8 @@ public class MeshyClient extends Meshy {
         clientInitGate.release();
     }
 
-    @Override public Future<?> closeAsync() {
+    @Override
+    public Future<?> closeAsync() {
         if (closed.compareAndSet(false, true)) {
             return super.closeAsync();
         } else {
@@ -134,22 +127,14 @@ public class MeshyClient extends Meshy {
         return fileSource.getFileList();
     }
 
-    /** async version */
+    /**
+     * async version
+     */
     public void listFiles(final String[] paths, final ListCallback callback) throws IOException {
         if (closed.get()) {
             throw new IOException("client connection closed");
         }
-        FileSource fileSource = new FileSource(this) {
-            @Override
-            public void receiveReference(FileReference ref) {
-                callback.receiveReference(ref);
-            }
-
-            @Override
-            public void receiveComplete() {
-                callback.receiveReferenceComplete();
-            }
-        };
+        FileSource fileSource = new MyFileSource(callback);
         fileSource.requestRemoteFiles(paths);
     }
 
@@ -161,14 +146,14 @@ public class MeshyClient extends Meshy {
         return readFile(ref.getHostUUID(), ref.name, options);
     }
 
-    public SourceInputStream readFile(String nodeUuid, String fileName) throws IOException {
+    private SourceInputStream readFile(String nodeUuid, String fileName) throws IOException {
         if (closed.get()) {
             throw new IOException("client connection closed");
         }
         return new StreamSource(this, nodeUuid, fileName, bufferSize).getInputStream();
     }
 
-    public SourceInputStream readFile(String nodeUuid, String fileName, Map<String, String> options) throws IOException {
+    private SourceInputStream readFile(String nodeUuid, String fileName, Map<String, String> options) throws IOException {
         if (closed.get()) {
             throw new IOException("client connection closed");
         }
@@ -184,14 +169,14 @@ public class MeshyClient extends Meshy {
     }
 
     /** */
-    public static interface ListCallback {
+    public interface ListCallback {
 
         /**
          * Called each time a new file reference is received
          *
          * @param ref - the file referecne received
          */
-        public void receiveReference(FileReference ref);
+        void receiveReference(FileReference ref);
 
         /**
          * Called when all reference have been completed.  This can
@@ -199,7 +184,25 @@ public class MeshyClient extends Meshy {
          * the mesh source has completed, allowing clients to fail
          * quickly when no references are found.
          */
-        public void receiveReferenceComplete();
+        void receiveReferenceComplete();
     }
 
+    private class MyFileSource extends FileSource {
+        private final ListCallback callback;
+
+        public MyFileSource(ListCallback callback) {
+            super(MeshyClient.this);
+            this.callback = callback;
+        }
+
+        @Override
+        public void receiveReference(FileReference ref) {
+            callback.receiveReference(ref);
+        }
+
+        @Override
+        public void receiveComplete() {
+            callback.receiveReferenceComplete();
+        }
+    }
 }

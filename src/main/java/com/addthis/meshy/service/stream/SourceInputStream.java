@@ -13,26 +13,20 @@
  */
 package com.addthis.meshy.service.stream;
 
-import javax.annotation.concurrent.NotThreadSafe;
+import com.addthis.basis.util.Parameter;
+import com.google.common.base.Throwables;
+import com.yammer.metrics.Metrics;
+import com.yammer.metrics.core.Timer;
+import org.slf4j.Logger;
 
+import javax.annotation.concurrent.NotThreadSafe;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
-
 import java.net.SocketTimeoutException;
-
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
-
-import com.addthis.basis.util.Parameter;
-
-import com.google.common.base.Throwables;
-
-import com.yammer.metrics.Metrics;
-import com.yammer.metrics.core.Timer;
-
-import org.slf4j.Logger;
 
 @NotThreadSafe
 public class SourceInputStream extends InputStream {
@@ -41,16 +35,13 @@ public class SourceInputStream extends InputStream {
     private static final int MAX_READ_WAIT = Parameter.intValue("meshy.stream.timeout", 0) * 1000;
 
     private static final Logger log = StreamService.log;
-
+    /* metrics */
+    private static final Timer dequePollTimer = Metrics.newTimer(SourceInputStream.class, "dequeTimer");
     private final StreamSource source;
     private final BlockingQueue<byte[]> messageQueue;
-
     private ByteArrayInputStream current;
     private byte[] currentData;
     private boolean done = false;
-
-    /* metrics */
-    private static final Timer dequePollTimer = Metrics.newTimer(SourceInputStream.class, "dequeTimer");
 
     SourceInputStream(StreamSource source) {
         this.source = source;
@@ -107,7 +98,7 @@ public class SourceInputStream extends InputStream {
                 }
                 source.performBufferAccounting(data);
                 source.throwIfErrorSignal(data);
-                if (source.isCloseSignal(data)) {
+                if (StreamSource.isCloseSignal(data)) {
                     log.trace("{} fill exit on 0 bytes", this);
                     currentData = data;
                     close();

@@ -14,17 +14,17 @@
 package com.addthis.meshy.service.message;
 
 import javax.annotation.Nullable;
-
 import java.io.OutputStream;
-
 import java.util.Map;
 
 @FunctionalInterface
 public interface InternalHandler extends TopicSender {
 
-    @Nullable @Override default OutputStream sendMessage(String topic) {
+    @Nullable
+    @Override
+    default OutputStream sendMessage(String topic) {
         return null;
     }
 
-    abstract byte[] handleMessageRequest(String fileName, Map<String, String> options);
+    byte[] handleMessageRequest(String fileName, Map<String, String> options);
 }

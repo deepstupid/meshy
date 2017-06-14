@@ -13,17 +13,15 @@
  */
 package com.addthis.meshy.service.message;
 
-import java.io.IOException;
 import java.io.OutputStream;
-
 import java.util.Map;
 
-public interface MessageListener {
+interface MessageListener {
 
     /**
      * @param fileName requested file
      * @param options  optional options (or null if none)
      * @param out      stream to write to.  will ONLY send on close() !!
      */
-    public void requestContents(String fileName, Map<String, String> options, OutputStream out) throws IOException;
+    void requestContents(String fileName, Map<String, String> options, OutputStream out);
 }

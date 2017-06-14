@@ -13,31 +13,26 @@
  */
 package com.addthis.meshy.service.stream;
 
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import com.addthis.basis.util.Parameter;
-
 import com.addthis.meshy.MeshyConstants;
-
 import com.yammer.metrics.Metrics;
 import com.yammer.metrics.core.Counter;
 import com.yammer.metrics.core.Meter;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public class StreamService {
 
-    protected static final Logger log = LoggerFactory.getLogger(StreamService.class);
+class StreamService {
 
     public static final String ERROR_EXCEED_OPEN = "Exceeded Max Open Files";
     public static final String ERROR_CHANNEL_LOST = "Channel Connection Lost";
     public static final String ERROR_REMOTE_CHANNEL_LOST = "Remote Channel Connection Lost";
     public static final String ERROR_UNKNOWN = "no error message available";
     public static final int STREAM_BYTE_OVERHEAD = 1;
-
+    static final Logger log = LoggerFactory.getLogger(StreamService.class);
     /* not documented */
     static final boolean DIRECT_COPY = Parameter.boolValue("meshy.copy.direct", true);
     /* log dropped "more" requests */

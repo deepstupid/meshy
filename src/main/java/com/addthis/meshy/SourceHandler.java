@@ -13,28 +13,22 @@
  */
 package com.addthis.meshy;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import com.addthis.basis.util.JitterClock;
 import com.addthis.basis.util.Parameter;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.google.common.collect.Sets;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelException;
 import io.netty.channel.ChannelFuture;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.addthis.meshy.ChannelState.MESHY_BYTE_OVERHEAD;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -42,14 +36,13 @@ import static com.google.common.base.Preconditions.checkArgument;
 
 public abstract class SourceHandler implements SessionHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(SourceHandler.class);
-    static final int DEFAULT_COMPLETE_TIMEOUT = Parameter.intValue("meshy.complete.timeout", 120);
-    static final int DEFAULT_RESPONSE_TIMEOUT = Parameter.intValue("meshy.source.timeout", 0);
-    static final boolean SLOW_SLOW_CHANNELS = Parameter.boolValue("meshy.source.closeSlow", false);
-    static final boolean DISABLE_CREATION_FRAMES = Parameter.boolValue("meshy.source.noCreationFrames", false);
-
+    private static final int DEFAULT_COMPLETE_TIMEOUT = Parameter.intValue("meshy.complete.timeout", 120);
+    private static final int DEFAULT_RESPONSE_TIMEOUT = Parameter.intValue("meshy.source.timeout", 0);
+    private static final boolean SLOW_SLOW_CHANNELS = Parameter.boolValue("meshy.source.closeSlow", false);
+    private static final boolean DISABLE_CREATION_FRAMES = Parameter.boolValue("meshy.source.noCreationFrames", false);
     // only used by response watcher
-    static final Set<SourceHandler> activeSources = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static final Set<SourceHandler> activeSources = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static final Logger log = LoggerFactory.getLogger(SourceHandler.class);
     // TODO: use scheduled thread pool
     static final Thread responseWatcher = new Thread("Source Response Watcher") {
         {
@@ -61,7 +54,7 @@ public abstract class SourceHandler implements SessionHandler {
         public void run() {
             while (true) {
                 try {
-                    sleep(1000);
+                    sleep(500);
                 } catch (Exception ignored) {
                     break;
                 }
@@ -71,27 +64,24 @@ public abstract class SourceHandler implements SessionHandler {
         }
 
         private void probeActiveSources() {
-            for (SourceHandler handler : activeSources) {
-                handler.handleChannelTimeouts();
-            }
+            activeSources.forEach(SourceHandler::handleChannelTimeouts);
         }
     };
 
     private final Class<? extends TargetHandler> targetClass;
     private final String className = getClass().getName();
-    private final String shortName = className.substring(className.lastIndexOf(".") + 1);
+    private final String shortName = className.substring(className.lastIndexOf('.') + 1);
     private final AtomicBoolean sent = new AtomicBoolean(false);
     private final AtomicBoolean complete = new AtomicBoolean(false);
     private final AtomicBoolean waited = new AtomicBoolean(false);
     private final Semaphore gate = new Semaphore(0);
     private final ChannelMaster master;
-
+    protected final Set<Channel> channels = Sets.newConcurrentHashSet();
     private int session;
     private int targetHandler;
     private long readTime;
     private long readTimeout;
     private long completeTimeout;
-    protected Set<Channel> channels;
 
     /**
      * This constructor does not perform initialization during construction and therefore does not escape "this".
@@ -106,13 +96,22 @@ public abstract class SourceHandler implements SessionHandler {
         this.targetClass = targetClass;
     }
 
-    public SourceHandler(ChannelMaster master, Class<? extends TargetHandler> targetClass) {
+    protected SourceHandler(ChannelMaster master, Class<? extends TargetHandler> targetClass) {
         this(master, targetClass, MeshyConstants.LINK_ALL);
     }
 
-    public SourceHandler(ChannelMaster master, Class<? extends TargetHandler> targetClass, String targetUuid) {
+    protected SourceHandler(ChannelMaster master, Class<? extends TargetHandler> targetClass, String targetUuid) {
         this(master, targetClass, true);
         start(targetUuid);
+    }
+
+    private static ByteBuf allocateSendBuffer(ByteBufAllocator alloc, int type, int session, byte[] data) {
+        ByteBuf sendBuffer = alloc.buffer(MESHY_BYTE_OVERHEAD + data.length);
+        sendBuffer.writeInt(type);
+        sendBuffer.writeInt(session);
+        sendBuffer.writeInt(data.length);
+        sendBuffer.writeBytes(data);
+        return sendBuffer;
     }
 
     protected final void start() {
@@ -126,11 +125,11 @@ public abstract class SourceHandler implements SessionHandler {
             throw new ChannelException("no matching mesh peers");
         }
         this.session = master.newSession();
-        Set<Channel> group = new HashSet<>(matches.size());
+
         for (ChannelState state : matches) {
-            group.add(state.getChannel());
+            channels.add(state.getChannel());
         }
-        this.channels = Collections.synchronizedSet(group);
+
         this.targetHandler = master.targetHandlerId(targetClass);
         setReadTimeout(DEFAULT_RESPONSE_TIMEOUT);
         setCompleteTimeout(DEFAULT_COMPLETE_TIMEOUT);
@@ -143,13 +142,13 @@ public abstract class SourceHandler implements SessionHandler {
             }
         }
         log.debug("{} start target={} uuid={} group={} sessionID={}",
-                  this, targetHandler, targetUuid, channels, session);
+                this, targetHandler, targetUuid, channels, session);
     }
 
     @Override
     public String toString() {
         return master + "[Source:" + shortName + ":s=" + session + ",h=" + targetHandler +
-               ",c=" + (channels != null ? channels.size() : "null") + "]";
+                ",c=" + (channels != null ? channels.size() : "null") + ']';
     }
 
     private void handleChannelTimeouts() {
@@ -157,10 +156,8 @@ public abstract class SourceHandler implements SessionHandler {
             log.info("{} response timeout on channel: {}", this, channelsToList());
             if (SLOW_SLOW_CHANNELS) {
                 log.warn("closing {} channel(s)", channels.size());
-                synchronized (channels) {
-                    for (Channel channel : channels) {
-                        channel.close();
-                    }
+                 {
+                     channels.forEach(Channel::close);
                 }
             }
             channels.clear();
@@ -172,15 +169,15 @@ public abstract class SourceHandler implements SessionHandler {
         }
     }
 
-    public ChannelMaster getChannelMaster() {
+    protected ChannelMaster getChannelMaster() {
         return master;
     }
 
-    public void setReadTimeout(int seconds) {
+    private void setReadTimeout(int seconds) {
         readTimeout = (long) (seconds * 1000);
     }
 
-    public void setCompleteTimeout(int seconds) {
+    private void setCompleteTimeout(int seconds) {
         completeTimeout = (long) (seconds * 1000);
     }
 
@@ -190,10 +187,10 @@ public abstract class SourceHandler implements SessionHandler {
 
     public String getPeerString() {
         StringBuilder sb = new StringBuilder(10 * channels.size());
-        synchronized (channels) {
+         {
             for (Channel channel : channels) {
                 if (sb.length() > 0) {
-                    sb.append(",");
+                    sb.append(',');
                 }
                 sb.append(channel.remoteAddress());
             }
@@ -212,7 +209,7 @@ public abstract class SourceHandler implements SessionHandler {
 
     @Override
     public final boolean send(byte[] data, final SendWatcher watcher) {
-        synchronized (channels) {
+         {
             if (channels.isEmpty()) {
                 return false;
             }
@@ -251,20 +248,9 @@ public abstract class SourceHandler implements SessionHandler {
 
         final int reportBytes = data.length;
         log.trace("{} send {} to {}", this, buffer.capacity(), channel);
-        channel.writeAndFlush(buffer.duplicate().retain()).addListener(ignored -> {
-            master.sentBytes(reportBytes);
-        });
+        channel.writeAndFlush(buffer.duplicate().retain()).addListener(ignored -> master.sentBytes(reportBytes));
         buffer.release();
         return true;
-    }
-
-    private static ByteBuf allocateSendBuffer(ByteBufAllocator alloc, int type, int session, byte[] data) {
-        ByteBuf sendBuffer = alloc.buffer(MESHY_BYTE_OVERHEAD + data.length);
-        sendBuffer.writeInt(type);
-        sendBuffer.writeInt(session);
-        sendBuffer.writeInt(data.length);
-        sendBuffer.writeBytes(data);
-        return sendBuffer;
     }
 
     @Override
@@ -306,7 +292,7 @@ public abstract class SourceHandler implements SessionHandler {
 
     private String channelsToList() {
         StringBuilder stringBuilder = new StringBuilder(10 * channels.size());
-        synchronized (channels) {
+         {
             for (Channel channel : channels) {
                 stringBuilder.append(channel.remoteAddress().toString());
             }
@@ -329,9 +315,9 @@ public abstract class SourceHandler implements SessionHandler {
         }
     }
 
-    public abstract void channelClosed(ChannelState state);
+    protected abstract void channelClosed(ChannelState state);
 
-    public abstract void receive(ChannelState state, int length, ByteBuf buffer) throws Exception;
+    protected abstract void receive(ChannelState state, int length, ByteBuf buffer) throws Exception;
 
-    public abstract void receiveComplete() throws Exception;
+    protected abstract void receiveComplete() throws Exception;
 }

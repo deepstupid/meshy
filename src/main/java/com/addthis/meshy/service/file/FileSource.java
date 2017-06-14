@@ -13,42 +13,28 @@
  */
 package com.addthis.meshy.service.file;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-
 import com.addthis.basis.util.LessBytes;
 import com.addthis.basis.util.Parameter;
-
-import com.addthis.meshy.ChannelMaster;
-import com.addthis.meshy.ChannelState;
-import com.addthis.meshy.Meshy;
-import com.addthis.meshy.MeshyConstants;
-import com.addthis.meshy.SourceHandler;
-
+import com.addthis.meshy.*;
 import com.google.common.base.Objects;
-
+import io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.buffer.ByteBuf;
+import java.util.*;
 
 import static com.google.common.base.Preconditions.checkState;
 
 public class FileSource extends SourceHandler {
-    protected static final Logger log = LoggerFactory.getLogger(FileSource.class);
+    static final Logger log = LoggerFactory.getLogger(FileSource.class);
 
-    static final int FILE_FIND_WINDOW_SIZE = Parameter.intValue("meshy.finder.window", 50_000);
+    private static final int FILE_FIND_WINDOW_SIZE = Parameter.intValue("meshy.finder.window", 50_000);
 
     // not thread safe, and only used for single-channel cases (eg. clients)
     private final LinkedList<FileReference> list = new LinkedList<>();
+    private List<String> fileRequest;
+    private FileReferenceFilter filter;
     private long currentWindow = 0;
-
-    protected List<String> fileRequest;
-    protected FileReferenceFilter filter;
 
     public FileSource(ChannelMaster master) {
         super(master, FileTarget.class, true);
@@ -83,7 +69,7 @@ public class FileSource extends SourceHandler {
         requestFilesPostStart("remote", matches);
     }
 
-    public void requestFiles(String scope, String... matches) {
+    private void requestFiles(String scope, String... matches) {
         start();
         requestFilesPostStart(scope, matches);
     }
@@ -101,7 +87,7 @@ public class FileSource extends SourceHandler {
         sendInitialWindowing();
     }
 
-    protected void sendInitialWindowing() {
+    void sendInitialWindowing() {
         increaseClientWindow(FILE_FIND_WINDOW_SIZE);
     }
 
@@ -159,10 +145,11 @@ public class FileSource extends SourceHandler {
         log.debug("{} recvComplete", this);
     }
 
-    @Override public String toString() {
+    @Override
+    public String toString() {
         return Objects.toStringHelper(this)
-                      .add("fileRequest", fileRequest)
-                      .add("filter", filter)
-                      .toString();
+                .add("fileRequest", fileRequest)
+                .add("filter", filter)
+                .toString();
     }
 }

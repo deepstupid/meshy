@@ -13,8 +13,10 @@
  */
 package com.addthis.meshy;
 
-/** for cmd-line stats output */
-public class ServerStats {
+/**
+ * for cmd-line stats output
+ */
+class ServerStats {
 
     final int bin;
     final int bout;

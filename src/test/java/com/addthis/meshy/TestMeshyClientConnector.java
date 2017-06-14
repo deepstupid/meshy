@@ -30,7 +30,7 @@ public class TestMeshyClientConnector extends TestMesh {
         final LinkedList<String> observed = new LinkedList<>();
         server.set(getServer());
         sequence.add("up-" + server.get().getUUID());
-        MeshyClientConnector connector = new MeshyClientConnector("localhost", server.get().getLocalPort(), 500, 1000) {
+        MeshyClientConnector connector = new MeshyClientConnector("localhost", server.get().getLocalPort(), 100, 100) {
             @Override
             public void linkUp(MeshyClient client) {
                 observed.add("up-" + server.get().getUUID());

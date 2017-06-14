@@ -16,7 +16,7 @@ package com.addthis.meshy;
 import io.netty.channel.Channel;
 
 @FunctionalInterface
-public interface ChannelCloseListener {
+interface ChannelCloseListener {
 
-    public void channelClosed(Channel channel);
+    void channelClosed(Channel channel);
 }

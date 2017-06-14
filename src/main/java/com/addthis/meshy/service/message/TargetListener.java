@@ -18,7 +18,7 @@ import java.io.InputStream;
 
 public interface TargetListener {
 
-    public void receiveMessage(TopicSender target, String topic, InputStream in) throws IOException;
+    void receiveMessage(TopicSender target, String topic, InputStream in) throws IOException;
 
-    public void linkDown(TopicSender target);
+    void linkDown(TopicSender target);
 }

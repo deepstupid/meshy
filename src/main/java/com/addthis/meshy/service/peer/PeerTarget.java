@@ -15,7 +15,6 @@ package com.addthis.meshy.service.peer;
 
 import com.addthis.meshy.Meshy;
 import com.addthis.meshy.TargetHandler;
-
 import io.netty.buffer.ByteBuf;
 
 import static com.addthis.meshy.service.peer.PeerService.decodeExtraPeers;
@@ -37,7 +36,7 @@ public class PeerTarget extends TargetHandler {
                 send(PeerService.encodeExtraPeers(getChannelMaster()));
             } else {
                 log.debug("writing peer cancel from {}", this);
-                send(new byte[] {0}); // send byte array with a single "0" byte for the empty string
+                send(new byte[]{0}); // send byte array with a single "0" byte for the empty string
             }
             receivedStateUuid = true;
         } else {

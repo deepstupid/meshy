@@ -13,49 +13,19 @@
  */
 package com.addthis.meshy;
 
-import javax.annotation.Nullable;
-
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.InterfaceAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
-
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import com.addthis.basis.util.LessBytes;
 import com.addthis.basis.util.Parameter;
-
+import com.addthis.meshy.service.file.VirtualFileSystem;
 import com.addthis.meshy.service.message.MessageFileSystem;
 import com.addthis.meshy.service.peer.PeerSource;
-
 import com.google.common.base.Objects;
 import com.google.common.base.Splitter;
 import com.google.common.hash.Hashing;
-
 import com.yammer.metrics.Metrics;
 import com.yammer.metrics.core.Counter;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.EventLoopGroup;
+import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.ServerSocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -64,24 +34,32 @@ import io.netty.util.concurrent.DefaultPromise;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import io.netty.util.concurrent.Promise;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nullable;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.net.*;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 
 public class MeshyServer extends Meshy {
-    protected static final Logger log = LoggerFactory.getLogger(MeshyServer.class);
-
+    private static final MessageFileSystem messageFileSystem = new MessageFileSystem();
+    static final Logger log = LoggerFactory.getLogger(MeshyServer.class);
+    static final Counter peerCountMetric = Metrics.newCounter(Meshy.class, "peerCount");
     private static final boolean autoMesh = Parameter.boolValue("meshy.autoMesh", false);
     // permit peering in local VM
     private static final boolean allowPeerLocal = Parameter.boolValue("meshy.peer.local", true);
     private static final int autoMeshTimeout = Parameter.intValue("meshy.autoMeshTimeout", 60000);
-
-    static final Counter peerCountMetric = Metrics.newCounter(Meshy.class, "peerCount");
-
     private static final ArrayList<byte[]> vmLocalNet = new ArrayList<>(3);
     private static final HashMap<String, VirtualFileSystem[]> vfsCache = new HashMap<>();
-    private static final HashSet<String> blockedPeers = new HashSet<>();
-
-    public static final MessageFileSystem messageFileSystem = new MessageFileSystem();
+    //private static final HashSet<String> blockedPeers = new HashSet<>();
 
     static {
         /* collect local valid interfaces for fast lookup */
@@ -109,38 +87,6 @@ public class MeshyServer extends Meshy {
 
     }
 
-    public static void resetFileSystems() {
-        vfsCache.clear();
-    }
-
-    /**
-     * cache for use of multiple servers in one VM
-     */
-    protected static VirtualFileSystem[] loadFileSystems(File rootDir) {
-        String cacheKey = rootDir != null ? rootDir.getAbsolutePath() : ".";
-        VirtualFileSystem[] vfsList = vfsCache.get(cacheKey);
-        if (vfsList == null) {
-            LinkedList<VirtualFileSystem> load = new LinkedList<>();
-            load.add(messageFileSystem);
-            if (rootDir != null) {
-                load.add(new LocalFileSystem(rootDir));
-            }
-            String registerVMs = Parameter.value("meshy.vms");
-            if (registerVMs != null) {
-                for (String vm : Splitter.on(",").omitEmptyStrings().trimResults().split(registerVMs)) {
-                    try {
-                        load.add((VirtualFileSystem) Class.forName(vm).newInstance());
-                    } catch (Throwable t) {
-                        log.error("failure loading VM {}", vm, t);
-                    }
-                }
-            }
-            vfsList = load.toArray(new VirtualFileSystem[load.size()]);
-            vfsCache.put(cacheKey, vfsList);
-        }
-        return vfsList;
-    }
-
     private final int serverPort;
     private final File rootDir;
     private final VirtualFileSystem[] filesystems;
@@ -148,16 +94,13 @@ public class MeshyServer extends Meshy {
     private final String serverUuid;
     private final MeshyServerGroup group;
     private final AtomicInteger serverPeers;
-
     private final Promise<?> closeFuture;
-
     private final InetSocketAddress serverLocal;
     private final NetworkInterface serverNetIf;
 
-    public MeshyServer(int port) throws IOException {
+    private MeshyServer(int port) throws IOException {
         this(port, new File("."));
     }
-
     public MeshyServer(int port, File rootDir) throws IOException {
         this(port, rootDir, null, new MeshyServerGroup());
     }
@@ -209,8 +152,8 @@ public class MeshyServer extends Meshy {
                     }
                     ServerSocketChannel serverChannel =
                             (ServerSocketChannel) bootstrap.bind(new InetSocketAddress(inAddr, port))
-                                                           .syncUninterruptibly()
-                                                           .channel();
+                                    .syncUninterruptibly()
+                                    .channel();
                     if (primaryServerLocal != null) {
                         log.info("server [{}-*] binding to extra address: {}", super.getUUID(), primaryServerLocal);
                     }
@@ -225,23 +168,21 @@ public class MeshyServer extends Meshy {
         this.serverNetIf = NetworkInterface.getByInetAddress(serverLocal.getAddress());
         this.serverPort = serverLocal.getPort();
         if (serverNetIf != null) {
-            serverUuid = super.getUUID() + "-" + serverPort + "-" + serverNetIf.getName();
+            serverUuid = super.getUUID() + '-' + serverPort + '-' + serverNetIf.getName();
         } else {
-            serverUuid = super.getUUID() + "-" + serverPort;
+            serverUuid = super.getUUID() + '-' + serverPort;
         }
         log.info("server [{}] on {} @ {}", getUUID(), serverLocal, rootDir);
         closeFuture = new DefaultPromise<>(GlobalEventExecutor.INSTANCE);
-        workerGroup.terminationFuture().addListener((Future<Object> workerFuture) -> {
-            bossGroup.terminationFuture().addListener((Future<Object> bossFuture) -> {
-                if (!workerFuture.isSuccess()) {
-                    closeFuture.tryFailure(workerFuture.cause());
-                } else if (!bossFuture.isSuccess()) {
-                    closeFuture.tryFailure(bossFuture.cause());
-                } else {
-                    closeFuture.trySuccess(null);
-                }
-            });
-        });
+        workerGroup.terminationFuture().addListener((Future<Object> workerFuture) -> bossGroup.terminationFuture().addListener((Future<Object> bossFuture) -> {
+            if (!workerFuture.isSuccess()) {
+                closeFuture.tryFailure(workerFuture.cause());
+            } else if (!bossFuture.isSuccess()) {
+                closeFuture.tryFailure(bossFuture.cause());
+            } else {
+                closeFuture.trySuccess(null);
+            }
+        }));
         addMessageFileSystemPaths();
         group.join(this);
         if (autoMesh) {
@@ -249,12 +190,46 @@ public class MeshyServer extends Meshy {
         }
     }
 
+    public static void resetFileSystems() {
+        vfsCache.clear();
+    }
+
+    /**
+     * cache for use of multiple servers in one VM
+     */
+    private static VirtualFileSystem[] loadFileSystems(File rootDir) {
+        String cacheKey = rootDir != null ? rootDir.getAbsolutePath() : ".";
+        VirtualFileSystem[] vfsList = vfsCache.get(cacheKey);
+        if (vfsList == null) {
+            LinkedList<VirtualFileSystem> load = new LinkedList<>();
+            load.add(messageFileSystem);
+            if (rootDir != null) {
+                load.add(new LocalFileSystem(rootDir));
+            }
+            String registerVMs = Parameter.value("meshy.vms");
+            if (registerVMs != null) {
+                for (String vm : Splitter.on(",").omitEmptyStrings().trimResults().split(registerVMs)) {
+                    try {
+                        load.add((VirtualFileSystem) Class.forName(vm).getConstructor().newInstance());
+                    } catch (NoSuchMethodException | InvocationTargetException e) {
+                        e.printStackTrace();
+                    } catch (Throwable t) {
+                        log.error("failure loading VM {}", vm, t);
+                    }
+                }
+            }
+            vfsList = load.toArray(new VirtualFileSystem[load.size()]);
+            vfsCache.put(cacheKey, vfsList);
+        }
+        return vfsList;
+    }
+
     private void addMessageFileSystemPaths() {
         messageFileSystem.addPath("/meshy/" + getUUID() + "/stats", (fileName, options) -> {
             StringBuilder sb = new StringBuilder();
             for (String line : group.getLastStats()) {
                 sb.append(line);
-                sb.append("\n");
+                sb.append('\n');
             }
             return sb.toString().getBytes(UTF_8);
         });
@@ -272,32 +247,32 @@ public class MeshyServer extends Meshy {
             }
             return out.toByteArray();
         });
-        messageFileSystem.addPath("/meshy/host/ban", (fileName, options) -> {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            String hostName = options.get("host");
-            synchronized (blockedPeers) {
-                try {
-                    if (hostName == null) {
-                        for (String peer : blockedPeers) {
-                            LessBytes.writeString(peer + "\n", out);
-                        }
-                    } else {
-                        if (blockedPeers.contains(hostName)) {
-                            LessBytes.writeString(hostName + " already in blocked peers\n", out);
-                        } else {
-                            LessBytes.writeString(hostName + " added to blocked peers\n", out);
-                        }
-                        if (dropPeer(hostName)) {
-                            LessBytes.writeString(hostName + " connection closed (async)\n", out);
-                        } else {
-                            LessBytes.writeString(hostName + " connection not found\n", out);
-                        }
-                    }
-                } catch (IOException ignored) {
-                }
-            }
-            return out.toByteArray();
-        });
+//        messageFileSystem.addPath("/meshy/host/ban", (fileName, options) -> {
+//            ByteArrayOutputStream out = new ByteArrayOutputStream();
+//            String hostName = options.get("host");
+////            synchronized (blockedPeers) {
+////                try {
+////                    if (hostName == null) {
+////                        for (String peer : blockedPeers) {
+////                            LessBytes.writeString(peer + '\n', out);
+////                        }
+////                    } else {
+////                        if (blockedPeers.contains(hostName)) {
+////                            LessBytes.writeString(hostName + " already in blocked peers\n", out);
+////                        } else {
+////                            LessBytes.writeString(hostName + " added to blocked peers\n", out);
+////                        }
+////                        if (dropPeer(hostName)) {
+////                            LessBytes.writeString(hostName + " connection closed (async)\n", out);
+////                        } else {
+////                            LessBytes.writeString(hostName + " connection not found\n", out);
+////                        }
+////                    }
+////                } catch (IOException ignored) {
+////                }
+////            }
+//            return out.toByteArray();
+//        });
     }
 
     public File getRootDir() {
@@ -340,7 +315,8 @@ public class MeshyServer extends Meshy {
         closeAsync().syncUninterruptibly();
     }
 
-    @Override public Future<?> closeAsync() {
+    @Override
+    public Future<?> closeAsync() {
         bossGroup.shutdownGracefully();
         super.closeAsync();
         return closeFuture;
@@ -382,16 +358,16 @@ public class MeshyServer extends Meshy {
         }
     }
 
-    public boolean blockPeer(final String peerUuid) {
-        synchronized (blockedPeers) {
-            blockedPeers.add(peerUuid);
-        }
-        return dropPeer(peerUuid);
-    }
+//    public boolean blockPeer(final String peerUuid) {
+//        synchronized (blockedPeers) {
+//            blockedPeers.add(peerUuid);
+//        }
+//        return dropPeer(peerUuid);
+//    }
 
     public boolean dropPeer(final String peerUuid) {
         boolean hitAtLeastOnce = false;
-        synchronized (connectedChannels) {
+         {
             for (ChannelState state : connectedChannels) {
                 if (state.getName().equals(peerUuid) && state.getChannel().isOpen()) {
                     state.getChannel().close();
@@ -405,12 +381,13 @@ public class MeshyServer extends Meshy {
     /**
      * connects to a peer address.  if peerUuid is not know, method blocks
      */
-    @Nullable public ChannelFuture connectToPeer(@Nullable final String peerUuid, final InetSocketAddress pAddr) {
-        synchronized (blockedPeers) {
-            if (peerUuid != null && blockedPeers.contains(peerUuid)) {
-                return null;
-            }
-        }
+    @Nullable
+    public ChannelFuture connectToPeer(@Nullable final String peerUuid, final InetSocketAddress pAddr) {
+//        synchronized (blockedPeers) {
+//            if (peerUuid != null && blockedPeers.contains(peerUuid)) {
+//                return null;
+//            }
+//        }
         updateLastEventTime();
         log.debug("{} request connect to {} @ {}", MeshyServer.this, peerUuid, pAddr);
         /* skip peering with self (and other meshes started in the same vm) */
@@ -444,7 +421,7 @@ public class MeshyServer extends Meshy {
         }
         /* skip peering again */
         log.debug("{} peer.check (uuid={} addr={})", this, peerUuid, pAddr);
-        synchronized (connectedChannels) {
+        
             for (ChannelState channelState : connectedChannels) {
                 log.trace(" --> state={}", channelState);
                 if (peerUuid != null && channelState.getName() != null && channelState.getName().equals(peerUuid)) {
@@ -462,14 +439,14 @@ public class MeshyServer extends Meshy {
                 log.trace("{} skip already peering {}", MeshyServer.this, peerUuid);
                 return null;
             }
-        }
+        
         log.debug("{} connecting to {} @ {}", this, peerUuid, pAddr);
         /* connect to peer */
         ChannelFuture connectionFuture = connect(pAddr);
         if (peerUuid != null) {
             connectionFuture.addListener(f -> {
                 if (!f.isSuccess()) {
-                    synchronized (connectedChannels) {
+                     {
                         inPeering.remove(peerUuid);
                     }
                 }
@@ -479,23 +456,23 @@ public class MeshyServer extends Meshy {
     }
 
     public boolean promoteToNamedServerPeer(ChannelState peerState, String newUuid, InetSocketAddress newAddr) {
-        synchronized (connectedChannels) {
+         {
             for (ChannelState channelState : connectedChannels) {
                 if (newUuid.equals(channelState.getName())) {
                     log.info("rejecting peerage for {} @ {} (to {} @ {}) because uuid matches existing {} for: {}",
-                             peerState.getName(), peerState.getChannelRemoteAddress(), newUuid, newAddr,
-                             channelState, this);
+                            peerState.getName(), peerState.getChannelRemoteAddress(), newUuid, newAddr,
+                            channelState, this);
                     return false;
                 }
                 if (newAddr.equals(channelState.getRemoteAddress())) {
                     log.info("rejecting peerage for {} @ {} (to {} @ {}) because address matches existing {} for: {}",
-                             peerState.getName(), peerState.getChannelRemoteAddress(), newUuid, newAddr,
-                             channelState, this);
+                            peerState.getName(), peerState.getChannelRemoteAddress(), newUuid, newAddr,
+                            channelState, this);
                     return false;
                 }
             }
             log.info("promoting {} @ {} to named server peer as {} @ {} for: {}",
-                     peerState.getName(), peerState.getChannelRemoteAddress(), newUuid, newAddr, this);
+                    peerState.getName(), peerState.getChannelRemoteAddress(), newUuid, newAddr, this);
             peerState.setName(newUuid);
             peerState.setRemoteAddress(newAddr);
             serverPeers.incrementAndGet();
@@ -524,21 +501,24 @@ public class MeshyServer extends Meshy {
         return new ServerStats(this);
     }
 
-    /** thread that uses UDP to auto-mesh server instances */
+    /**
+     * thread that uses UDP to auto-mesh server instances
+     */
     private void startAutoMesh(final int port, final int timeout) {
         // create UDP broadcast / listener
         Thread t = new Thread(new AutoMeshTask(this, group, timeout, port),
-                              "AutoMesh Peer Listener (port: " + port + ")");
+                "AutoMesh Peer Listener (port: " + port + ')');
         t.setDaemon(true);
         t.start();
     }
 
-    @Override public String toString() {
+    @Override
+    public String toString() {
         return Objects.toStringHelper(this)
-                      .add("serverPort", serverPort)
-                      .add("serverUuid", serverUuid)
-                      .add("channelCount", getChannelCount())
-                      .add("peeredCount", getServerPeerCount())
-                      .toString();
+                .add("serverPort", serverPort)
+                .add("serverUuid", serverUuid)
+                .add("channelCount", getChannelCount())
+                .add("peeredCount", getServerPeerCount())
+                .toString();
     }
 }

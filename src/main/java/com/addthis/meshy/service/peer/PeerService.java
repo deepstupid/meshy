@@ -13,26 +13,21 @@
  */
 package com.addthis.meshy.service.peer;
 
+import com.addthis.basis.util.LessBytes;
+import com.addthis.meshy.ChannelState;
+import com.addthis.meshy.MeshyConstants;
+import com.addthis.meshy.MeshyServer;
+import com.google.common.base.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-
 import java.util.concurrent.LinkedBlockingQueue;
-
-import com.addthis.basis.util.LessBytes;
-
-import com.addthis.meshy.ChannelState;
-import com.addthis.meshy.MeshyConstants;
-import com.addthis.meshy.MeshyServer;
-
-import com.google.common.base.Strings;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * connect to a peer, receive from peer it's uuid and connection map
@@ -40,7 +35,7 @@ import org.slf4j.LoggerFactory;
 public final class PeerService {
 
     static final Logger log = LoggerFactory.getLogger(PeerService.class);
-    static final LinkedBlockingQueue<PeerTuple> peerQueue = new LinkedBlockingQueue<>();
+    private static final LinkedBlockingQueue<PeerTuple> peerQueue = new LinkedBlockingQueue<>();
 
     static final Thread peeringThread = new Thread() {
         {
@@ -64,7 +59,7 @@ public final class PeerService {
     private PeerService() {
     }
 
-    static boolean shouldEncode(InetSocketAddress sockAddr) {
+    private static boolean shouldEncode(InetSocketAddress sockAddr) {
         InetAddress addr = sockAddr.getAddress();
         return !(addr.isLoopbackAddress() || addr.isAnyLocalAddress());
     }
@@ -143,7 +138,7 @@ public final class PeerService {
                 return master.promoteToNamedServerPeer(peerState, newName, newAddr);
             } else if (shouldBeConnector) {
                 log.info("dropping (and reconnecting as client) backwards connection from: {} @ {} for: {}",
-                         newName, newAddr, master);
+                        newName, newAddr, master);
                 master.connectToPeer(newName, newAddr);
             }
             return promoteToPeer;

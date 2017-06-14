@@ -13,6 +13,7 @@
  */
 package com.addthis.meshy.service.message;
 
+import java.io.IOException;
 import java.io.InputStream;
 
 import java.util.Map;
@@ -44,9 +45,13 @@ public class TestMessageFileSystem extends TestMesh {
         MessageFileProvider provider = new MessageFileProvider(client);
         provider.setListener("/rpc.test/one.rpc", (fileName, options, out) -> {
             /* this is the client rpc reply endpoint implementation */
-            LessBytes.writeString("rpc.reply", out);
-            /* bytes are accumulated and sent on close */
-            out.close();
+            try {
+                LessBytes.writeString("rpc.reply", out);
+                /* bytes are accumulated and sent on close */
+                out.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         });
 
         /*

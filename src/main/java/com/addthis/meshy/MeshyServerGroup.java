@@ -13,40 +13,33 @@
  */
 package com.addthis.meshy;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-
 import com.addthis.basis.util.JitterClock;
 import com.addthis.basis.util.Parameter;
-
 import com.addthis.meshy.service.file.FileStats;
 import com.addthis.meshy.service.stream.StreamStats;
 import com.addthis.muxy.ReadMuxFileDirectoryCache;
-
+import com.google.common.collect.Sets;
 import com.yammer.metrics.core.VirtualMachineMetrics;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
-public class MeshyServerGroup {
+
+class MeshyServerGroup {
 
     private static final Logger log = LoggerFactory.getLogger(MeshyServerGroup.class);
 
     private static final GCMetrics gcMetrics = new GCMetrics();
     private static final boolean MERGE_METRICS = Parameter.boolValue("meshy.metrics.merge", true);
 
-    private final HashSet<String> byUuid = new HashSet<>();
-    private final HashSet<MeshyServer> byServer = new HashSet<>();
+    private final Set<String> byUuid = Sets.newConcurrentHashSet();
+    private final Set<MeshyServer> byServer = Sets.newConcurrentHashSet();
     private final String uuid = Long.toHexString(UUID.randomUUID().getMostSignificantBits());
     private final LinkedList<String> lastStats = new LinkedList<>();
-    private volatile int openStreams;
     private final Thread statsThread;
-
+    private volatile int openStreams;
     private int statsCountdown = 2;
 
     // TODO replace with scheduled thread pool
@@ -70,11 +63,7 @@ public class MeshyServerGroup {
         };
         statsThread.setDaemon(true);
         statsThread.start();
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-            public void run() {
-                statsThread.interrupt();
-            }
-        });
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> statsThread.interrupt()));
     }
 
     public String[] getLastStats() {
@@ -155,10 +144,10 @@ public class MeshyServerGroup {
                 channelCount += stats.channelCount;
                 peerCount += stats.peerCount;
             }
-            rep.append(" mC=" + channelCount); // total channel count
-            rep.append(" mS=" + peerCount); // fully connected channels
-            rep.append(" mBI=" + bin); // total bytes in
-            rep.append(" mBO=" + bout); // total bytes out
+            rep.append(" mC=").append(channelCount); // total channel count
+            rep.append(" mS=").append(peerCount); // fully connected channels
+            rep.append(" mBI=").append(bin); // total bytes in
+            rep.append(" mBO=").append(bout); // total bytes out
         } else {
             int index = 0;
             for (MeshyServer server : byServer) {
@@ -166,10 +155,10 @@ public class MeshyServerGroup {
                 bin += stats.bin;
                 bout += stats.bout;
                 String pre = byServer.size() > 1 ? (" " + index) : " ";
-                rep.append(pre + "p=" + server.getLocalPort() + "-" + server.getNetIf());
-                rep.append(pre + "mS=" + stats.peerCount); // fully connected channels
-                rep.append(pre + "mBI=" + stats.bin); // total bytes in
-                rep.append(pre + "mBO=" + stats.bout); // total bytes out
+                rep.append(pre).append("p=").append(server.getLocalPort()).append('-').append(server.getNetIf());
+                rep.append(pre).append("mS=").append(stats.peerCount); // fully connected channels
+                rep.append(pre).append("mBI=").append(stats.bin); // total bytes in
+                rep.append(pre).append("mBO=").append(stats.bout); // total bytes out
                 index++;
             }
         }
@@ -182,7 +171,7 @@ public class MeshyServerGroup {
         String report = rep.toString();
         MeshyServer.log.info(report);
         synchronized (lastStats) {
-            lastStats.addLast("t=" + JitterClock.globalTime() + " " + report);
+            lastStats.addLast("t=" + JitterClock.globalTime() + ' ' + report);
             if (lastStats.size() > 10) {
                 lastStats.removeFirst();
             }
@@ -203,25 +192,25 @@ public class MeshyServerGroup {
 
     public void join(MeshyServer server) {
         byUuid.add(server.getUUID());
-        synchronized (byServer) {
+         {
             byServer.add(server);
         }
     }
 
     public boolean hasUuid(String testUuid) {
-        synchronized (byUuid) {
+         {
             return byUuid.contains(testUuid);
         }
     }
 
     public boolean hasServer(MeshyServer server) {
-        synchronized (byServer) {
+         {
             return byServer.contains(server);
         }
     }
 
     public MeshyServer[] getMembers() {
-        synchronized (byServer) {
+         {
             return byServer.toArray(new MeshyServer[byServer.size()]);
         }
     }

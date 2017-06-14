@@ -13,18 +13,18 @@
  */
 package com.addthis.meshy;
 
-import java.util.Collection;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.util.concurrent.DefaultPromise;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.ImmediateEventExecutor;
 
+import java.util.Collection;
+import java.util.concurrent.atomic.AtomicInteger;
+
 class AggregateChannelFuture extends DefaultPromise<Void> {
 
-    public final Collection<ChannelFuture> futures;
+    private final Collection<ChannelFuture> futures;
 
     private final AtomicInteger complete;
     private final ChannelFutureListener aggregatingListener;
@@ -32,8 +32,10 @@ class AggregateChannelFuture extends DefaultPromise<Void> {
     // the group failure will just report any one sub-cause rather than bothering with suppressing (would need CAS)
     private volatile Throwable anyCause = null;
 
-    /** the promises collection should not be mutated after construction */
-    AggregateChannelFuture(Collection<ChannelFuture> futures, EventExecutor executor) {
+    /**
+     * the promises collection should not be mutated after construction
+     */
+    private AggregateChannelFuture(Collection<ChannelFuture> futures, EventExecutor executor) {
         super(executor);
         this.futures = futures;
         this.complete = new AtomicInteger(0);

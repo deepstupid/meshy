@@ -11,12 +11,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.addthis.meshy;
+package com.addthis.meshy.service.file;
 
 
 public interface VirtualFileSystem {
 
-    public String[] tokenizePath(String path);
+    String[] tokenizePath(String path);
 
-    public VirtualFileReference getFileRoot();
+    VirtualFileReference getFileRoot();
 }

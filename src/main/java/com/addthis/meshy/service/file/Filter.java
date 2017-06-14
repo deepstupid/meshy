@@ -13,9 +13,6 @@
  */
 package com.addthis.meshy.service.file;
 
-import com.addthis.meshy.VirtualFileFilter;
-import com.addthis.meshy.VirtualFileReference;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,12 +23,12 @@ public class Filter implements VirtualFileFilter {
 
     private static final Logger log = LoggerFactory.getLogger(Filter.class);
 
-    private String token;
-    private boolean all;
-    private boolean start;
-    private boolean end;
+    private final String token;
+    private final boolean all;
+    private final boolean start;
+    private final boolean end;
 
-    public Filter(final String token, final boolean all, final boolean start, final boolean end) {
+    private Filter(final String token, final boolean all, final boolean start, final boolean end) {
         this.token = token;
         this.all = all;
         this.start = start;
@@ -57,9 +54,9 @@ public class Filter implements VirtualFileFilter {
     public boolean accept(final VirtualFileReference ref) {
         final String fileName = ref.getName();
         final boolean ret = (all) ||
-                            (start && fileName.startsWith(token)) ||
-                            (end && fileName.endsWith(token)) ||
-                            (fileName.equals(token));
+                (start && fileName.startsWith(token)) ||
+                (end && fileName.endsWith(token)) ||
+                (fileName.equals(token));
         if (log.isTraceEnabled()) {
             log.trace("accept? ({}) = {}", ref, ret);
         }

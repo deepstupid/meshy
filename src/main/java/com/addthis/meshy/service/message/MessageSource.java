@@ -13,21 +13,18 @@
  */
 package com.addthis.meshy.service.message;
 
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-
 import com.addthis.basis.util.LessBytes;
-
 import com.addthis.meshy.ChannelMaster;
 import com.addthis.meshy.ChannelState;
 import com.addthis.meshy.Meshy;
 import com.addthis.meshy.SourceHandler;
-
+import io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.buffer.ByteBuf;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 /**
  * runs in context of mesh client
@@ -68,7 +65,7 @@ public class MessageSource extends SourceHandler implements OutputSender, TopicS
     @Override
     public OutputStream sendMessage(String topic) {
         try {
-            ByteArrayOutputStream out = new SendOnCloseOutputStream(this, 4096);
+            ByteArrayOutputStream out = new SendOnCloseOutputStream(this, topic.length()*2);
             LessBytes.writeString(topic, out);
             return out;
         } catch (Exception ex) {
